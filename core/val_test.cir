@@ -1,0 +1,40 @@
+* Common Emitter Amplifier
+
+******** PARAMETERS ********
+.param RC=3000
+.param RE=470
+.param VCC=12
+
+******** SUPPLY ********
+V1 vcc 0 DC {VCC}
+
+******** INPUT ********
+Vin in 0 DC 0 AC 1
+
+******** BIAS ********
+R1 vcc base 100000
+R2 vcc base 20000
+
+******** AMPLIFIER ********
+Rc vcc collector 4952
+Re emitter 0 439
+
+Cin in base 10u
+Ce emitter 0 100u
+
+******** TRANSISTOR ********
+Q1 collector base emitter QNPN
+.model QNPN NPN (BF=150 VAF=100 IS=1e-15)
+
+******** ANALYSIS ********
+.ac dec 200 10 100Meg
+
+******** EXPORT DATA ********
+.control
+run
+set filetype=ascii
+wrdata ngspice_simulation_output.txt frequency v(collector)
+.endc
+
+.end
+
