@@ -1,0 +1,32 @@
+* Differential Amplifier (Long-Tail Pair)
+* AC simulation: differential input at Q1 base, Q2 base grounded
+* Output: single-ended at col1
+
+VCC vcc 0 DC 12
+VEE 0 vee DC 12
+
+Vin_p inp 0 DC 0 AC 1
+Vin_n inn 0 DC 0 AC 0
+
+RL1 vcc col1 {RL_VAL}
+RL2 vcc col2 {RL_VAL}
+
+Q1 col1 inp emitter1 QNPN
+Q2 col2 inn emitter2 QNPN
+
+RE1 emitter1 tail {RE_VAL}
+RE2 emitter2 tail {RE_VAL}
+
+Rtail tail vee {RTAIL_VAL}
+
+.model QNPN NPN (BF=150 VAF=100 IS=1e-15 RB=100)
+
+.ac dec 200 10 100Meg
+
+.control
+run
+set filetype=ascii
+wrdata ngspice_simulation_output.txt frequency v(col1)
+.endc
+
+.end

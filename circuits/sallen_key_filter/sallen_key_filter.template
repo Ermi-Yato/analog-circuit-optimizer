@@ -1,0 +1,26 @@
+* Sallen-Key 2nd Order Active Low-Pass Filter (Unity-Gain)
+* Topology: Vin -> R1 -> A -> R2 -> B(+opamp input)
+*           C1: A -> Vout (feedback)
+*           C2: B -> GND
+
+Vin in 0 AC 1
+
+R1 in nodeA {R1_VAL}
+R2 nodeA nodeB {R2_VAL}
+C1 nodeA out {C1_VAL}
+C2 nodeB 0 {C2_VAL}
+
+* Ideal unity-gain opamp: high-gain VCVS + feedback resistor
+* Rfb closes the loop: output -> inverting node -> opamp sees (nodeB - out_fb)
+Eopamp out 0 nodeB out_fb 1e6
+Rfb out_fb out 1
+
+.ac dec 200 1 10Meg
+
+.control
+run
+set filetype=ascii
+wrdata ngspice_simulation_output.txt frequency v(out)
+.endc
+
+.end

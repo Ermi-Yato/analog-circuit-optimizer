@@ -1,0 +1,41 @@
+* Class-A BJT Amplifier
+* Transient simulation: 1kHz sine input, 5ms window
+* Voltage-divider bias for stable Class-A operating point
+* Target: V_CE ~ VCC/2 for maximum output swing
+
+VCC vcc 0 DC 12
+
+* 1kHz input, 100mV amplitude
+Vin in 0 SIN(0 0.1 1000)
+
+* Input coupling capacitor
+Cin in base 10u
+
+* Voltage-divider bias: R_bias1 (VCC->base), R_bias2 (base->GND)
+Rbias1 vcc base {RBIAS1_VAL}
+Rbias2 base 0 {RBIAS2_VAL}
+
+* NPN transistor
+Q1 col base emitter QNPN
+
+* Collector load
+Rload vcc col {RLOAD_VAL}
+
+* Emitter degeneration (thermal stability)
+Remitter emitter 0 {REMITTER_VAL}
+
+* Emitter bypass capacitor (boosts AC gain)
+Ce emitter 0 100u
+
+.model QNPN NPN (BF=150 VAF=100 IS=1e-15 RB=50)
+
+* Transient: 1us step, 5ms total (5 full cycles of 1kHz)
+.tran 1u 5m
+
+.control
+run
+set filetype=ascii
+wrdata ngspice_simulation_output.txt time v(col)
+.endc
+
+.end

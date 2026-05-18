@@ -1,0 +1,25 @@
+* Transimpedance Amplifier (TIA)
+* Converts input current (photodiode model) to output voltage
+* Feedback: R_f || C_f sets gain and bandwidth
+* Ideal opamp modeled as high-gain VCVS
+
+* Input: AC current source at inverting node
+Iin neg 0 AC 1
+
+* Feedback network: R_f parallel with C_f
+Rf out neg {RF_VAL}
+Cf out neg {CF_VAL}
+
+* Ideal opamp: non-inverting (+) = GND, inverting (-) = neg
+* High open-loop gain forces virtual ground at neg
+Eopamp out 0 0 neg 1e6
+
+.ac dec 200 100 1Gig
+
+.control
+run
+set filetype=ascii
+wrdata ngspice_simulation_output.txt frequency v(out)
+.endc
+
+.end
