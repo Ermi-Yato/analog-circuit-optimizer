@@ -1,0 +1,10 @@
+pandas
+numpy
+joblib
+scikit-learn
+matplotlib
+seaborn
+PySide6
+schemdraw
+deap
+pytest
