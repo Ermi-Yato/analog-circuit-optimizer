@@ -1,0 +1,58 @@
+{
+  "id": "transimpedance_amplifier",
+  "name": "Transimpedance Amplifier",
+  "description": "Op-amp based transimpedance amplifier (TIA) that converts photodiode current to voltage. Feedback R_f sets gain; C_f controls stability. Used in optical receivers and precision sensors.",
+  "spice_template": "circuits/transimpedance_amplifier/transimpedance_amplifier.template",
+  "simulation_type": "ac",
+  "parameters": [
+    {
+      "name": "R_f",
+      "label": "Feedback Resistor",
+      "unit": "Ω",
+      "min": 1000.0,
+      "max": 1000000.0,
+      "default": 100000.0,
+      "scale": "log"
+    },
+    {
+      "name": "C_f",
+      "label": "Feedback Capacitor",
+      "unit": "F",
+      "min": 1e-13,
+      "max": 1e-10,
+      "default": 1e-12,
+      "scale": "log"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "Transimpedance_dBOhm",
+      "label": "Transimpedance Gain",
+      "unit": "dBΩ",
+      "optimize": "maximize"
+    },
+    {
+      "name": "Bandwidth_Hz",
+      "label": "-3dB Bandwidth",
+      "unit": "Hz",
+      "optimize": "maximize"
+    },
+    {
+      "name": "Phase_Margin_deg",
+      "label": "Phase Margin",
+      "unit": "°",
+      "optimize": "maximize"
+    }
+  ],
+  "model": {
+    "surrogate_path": "trained_models/transimpedance_amplifier/circuit_model.pkl",
+    "scaler_path": "trained_models/transimpedance_amplifier/feature_scaler.pkl",
+    "trained_on": "2026-05-18",
+    "samples": 5000,
+    "r2_scores": {
+      "Transimpedance_dBOhm": 0.9998494128649218,
+      "Bandwidth_Hz": 0.9975033213231532,
+      "Phase_Margin_deg": 0.7136211837615781
+    }
+  }
+}

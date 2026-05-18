@@ -1,0 +1,79 @@
+{
+  "id": "class_a_amplifier",
+  "name": "Class-A Amplifier",
+  "description": "Single NPN BJT Class-A amplifier with voltage-divider bias. Transient simulation at 1kHz. Optimizes output swing, distortion, and efficiency. Demonstrates large-signal nonlinear behavior.",
+  "spice_template": "circuits/class_a_amplifier/class_a_amplifier.template",
+  "simulation_type": "transient",
+  "parameters": [
+    {
+      "name": "R_bias1",
+      "label": "Upper Bias Resistor",
+      "unit": "Ω",
+      "min": 20000.0,
+      "max": 150000.0,
+      "default": 47000.0,
+      "scale": "linear"
+    },
+    {
+      "name": "R_bias2",
+      "label": "Lower Bias Resistor",
+      "unit": "Ω",
+      "min": 5000.0,
+      "max": 30000.0,
+      "default": 10000.0,
+      "scale": "linear"
+    },
+    {
+      "name": "R_load",
+      "label": "Collector Load Resistor",
+      "unit": "Ω",
+      "min": 1000.0,
+      "max": 5000.0,
+      "default": 2200.0,
+      "scale": "linear"
+    },
+    {
+      "name": "R_emitter",
+      "label": "Emitter Degeneration Resistor",
+      "unit": "Ω",
+      "min": 100.0,
+      "max": 1000.0,
+      "default": 470.0,
+      "scale": "linear"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "Output_Swing_V",
+      "label": "Output Voltage Swing",
+      "unit": "V",
+      "optimize": "maximize",
+      "target_default": 11.0
+    },
+    {
+      "name": "THD_percent",
+      "label": "Total Harmonic Distortion",
+      "unit": "%",
+      "optimize": "minimize",
+      "target_default": 5.0
+    },
+    {
+      "name": "Efficiency_percent",
+      "label": "Power Efficiency",
+      "unit": "%",
+      "optimize": "maximize",
+      "target_default": 45.0
+    }
+  ],
+  "model": {
+    "surrogate_path": "trained_models/class_a_amplifier/circuit_model.pkl",
+    "scaler_path": "trained_models/class_a_amplifier/feature_scaler.pkl",
+    "trained_on": "2026-05-18",
+    "samples": 1000,
+    "r2_scores": {
+      "Output_Swing_V": 0.8396087579067424,
+      "THD_percent": 0.9360429036444708,
+      "Efficiency_percent": 0.8687468122816684
+    }
+  }
+}

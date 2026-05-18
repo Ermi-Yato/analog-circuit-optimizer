@@ -1,0 +1,71 @@
+{
+  "id": "sallen_key_filter",
+  "name": "Sallen-Key Active Filter",
+  "description": "Second-order Sallen-Key unity-gain low-pass active filter using an ideal op-amp. Demonstrates frequency-domain optimization with clear, measurable cutoff and Q metrics.",
+  "spice_template": "circuits/sallen_key_filter/sallen_key_filter.template",
+  "simulation_type": "ac",
+  "parameters": [
+    {
+      "name": "R1",
+      "label": "Input Resistor R1",
+      "unit": "Ω",
+      "min": 1000,
+      "max": 100000,
+      "default": 10000,
+      "scale": "linear"
+    },
+    {
+      "name": "R2",
+      "label": "Feedback Resistor R2",
+      "unit": "Ω",
+      "min": 1000,
+      "max": 100000,
+      "default": 10000,
+      "scale": "linear"
+    },
+    {
+      "name": "C1",
+      "label": "Input Capacitor C1",
+      "unit": "F",
+      "min": 1e-10,
+      "max": 1e-06,
+      "default": 1e-08,
+      "scale": "log"
+    },
+    {
+      "name": "C2",
+      "label": "Feedback Capacitor C2",
+      "unit": "F",
+      "min": 1e-10,
+      "max": 1e-06,
+      "default": 1e-08,
+      "scale": "log"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "Cutoff_Freq_Hz",
+      "label": "Cutoff Frequency (-3dB)",
+      "unit": "Hz",
+      "optimize": "maximize",
+      "target_default": 10000.0
+    },
+    {
+      "name": "Q_factor",
+      "label": "Quality Factor",
+      "unit": "",
+      "optimize": "maximize",
+      "target_default": 0.707
+    }
+  ],
+  "model": {
+    "surrogate_path": "trained_models/sallen_key_filter/circuit_model.pkl",
+    "scaler_path": "trained_models/sallen_key_filter/feature_scaler.pkl",
+    "trained_on": "2026-05-18",
+    "samples": 5000,
+    "r2_scores": {
+      "Cutoff_Freq_Hz": 0.8777152116311382,
+      "Q_factor": 0.9814415845704303
+    }
+  }
+}
