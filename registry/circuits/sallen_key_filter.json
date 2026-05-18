@@ -9,19 +9,19 @@
       "name": "R1",
       "label": "Input Resistor R1",
       "unit": "Ω",
-      "min": 1000,
-      "max": 100000,
-      "default": 10000,
-      "scale": "linear"
+      "min": 1000.0,
+      "max": 100000.0,
+      "default": 10000.0,
+      "scale": "log"
     },
     {
       "name": "R2",
       "label": "Feedback Resistor R2",
       "unit": "Ω",
-      "min": 1000,
-      "max": 100000,
-      "default": 10000,
-      "scale": "linear"
+      "min": 1000.0,
+      "max": 100000.0,
+      "default": 10000.0,
+      "scale": "log"
     },
     {
       "name": "C1",
@@ -47,25 +47,23 @@
       "name": "Cutoff_Freq_Hz",
       "label": "Cutoff Frequency (-3dB)",
       "unit": "Hz",
-      "optimize": "maximize",
-      "target_default": 10000.0
+      "optimize": "maximize"
     },
     {
       "name": "Q_factor",
       "label": "Quality Factor",
       "unit": "",
-      "optimize": "maximize",
-      "target_default": 0.707
+      "optimize": "maximize"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/sallen_key_filter/circuit_model.pkl",
     "scaler_path": "trained_models/sallen_key_filter/feature_scaler.pkl",
     "trained_on": "2026-05-18",
-    "samples": 5000,
+    "samples": 2000,
     "r2_scores": {
-      "Cutoff_Freq_Hz": 0.8777152116311382,
-      "Q_factor": 0.9814415845704303
+      "Cutoff_Freq_Hz": 0.6795265548131629,
+      "Q_factor": 0.9387899354780402
     }
   }
 }

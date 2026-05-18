@@ -71,9 +71,9 @@
     "trained_on": "2026-05-18",
     "samples": 1000,
     "r2_scores": {
-      "Output_Swing_V": 0.8396087579067424,
-      "THD_percent": 0.9360429036444708,
-      "Efficiency_percent": 0.8687468122816684
+      "Output_Swing_V": 0.9617154511364093,
+      "THD_percent": 0.9493070784425734,
+      "Efficiency_percent": 0.9576263896041498
     }
   }
 }

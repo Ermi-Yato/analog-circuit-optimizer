@@ -62,10 +62,10 @@
     "surrogate_path": "trained_models/common_emitter_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/common_emitter_amplifier/feature_scaler.pkl",
     "trained_on": "2026-05-18",
-    "samples": 1000,
+    "samples": 5000,
     "r2_scores": {
-      "Peak_Gain_dB": 0.9611933317563808,
-      "Bandwidth_Hz": 0.9867623089421629
+      "Peak_Gain_dB": 0.9865315026514145,
+      "Bandwidth_Hz": 0.9958026937395041
     }
   }
 }

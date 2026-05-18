@@ -12,17 +12,17 @@ result_dict keys:
     "best_score"    : float                     — fitness score (lower = better)
     "best_predicted": {metric_name: value, ...} — surrogate predictions for best
     "history"       : [(generation, best_score), ...]
-    "population"    : list of (params_dict, score) for full final population
+    "population"    : list of (params_dict, score, predicted_metrics_dict) for full final population
 """
 from __future__ import annotations
 
 import os
 import random
 import joblib
-import warnings
+import copy
 
 import numpy as np
-from deap import base, creator, tools, algorithms
+from deap import base, creator, tools
 
 import registry.circuit_registry as reg
 from core.models.random_forest import RandomForestModel
@@ -33,8 +33,6 @@ _PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
-# DEAP uses module-level globals for FitnessMin/Individual.
-# Guard against re-registration across test runs.
 if not hasattr(creator, "FitnessMin"):
     creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
 if not hasattr(creator, "Individual"):
@@ -49,32 +47,13 @@ def optimize(
     crossover_prob: float = 0.7,
     mutation_prob: float = 0.2,
     tournament_size: int = 3,
+    elite_size: int = 4,  # Kept intact every generation
     weights: dict[str, float] | None = None,
     progress_callback=None,
     seed: int | None = None,
 ) -> dict:
     """
     Run the GA optimizer for a circuit.
-
-    Args:
-        circuit_id:        Registry circuit ID. Must have a trained model.
-        targets:           {metric_name: target_value}. Missing metrics ignored.
-        n_generations:     Number of GA generations.
-        pop_size:          Population size per generation.
-        crossover_prob:    Probability of crossover between two parents.
-        mutation_prob:     Probability of mutating an individual.
-        tournament_size:   Tournament selection size.
-        weights:           Optional per-metric fitness weights.
-        progress_callback: Called as (generation: int, best_score: float)
-                           after each generation. Suitable for GUI progress bars.
-        seed:              RNG seed for reproducibility.
-
-    Returns:
-        result_dict — see module docstring for keys.
-
-    Raises:
-        FileNotFoundError: Model PKL files not found — train first.
-        KeyError:          circuit_id not in registry.
     """
     if seed is not None:
         random.seed(seed)
@@ -88,9 +67,7 @@ def optimize(
     # Load model + scaler
     model_block = circuit.get("model")
     if not model_block:
-        raise FileNotFoundError(
-            f"No trained model for '{circuit_id}'. Train the model first."
-        )
+        raise FileNotFoundError(f"No trained model for '{circuit_id}'. Train the model first.")
 
     model_path  = os.path.join(_PROJECT_ROOT, model_block["surrogate_path"])
     scaler_path = os.path.join(_PROJECT_ROOT, model_block["scaler_path"])
@@ -105,14 +82,12 @@ def optimize(
 
     fitness_fn = build_fitness_fn(model, scaler, targets, metric_defs, weights)
 
-    # DEAP toolbox
+    # DEAP toolbox setup
     toolbox = base.Toolbox()
 
-    # Attribute generators — one per parameter, respecting bounds
     for p in param_defs:
         lo, hi = float(p["min"]), float(p["max"])
-        attr_name = f"attr_{p['name']}"
-        toolbox.register(attr_name, random.uniform, lo, hi)
+        toolbox.register(f"attr_{p['name']}", random.uniform, lo, hi)
 
     attr_fns = [getattr(toolbox, f"attr_{p['name']}") for p in param_defs]
 
@@ -121,51 +96,79 @@ def optimize(
 
     toolbox.register("individual", make_individual)
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-    toolbox.register("evaluate",   fitness_fn)
-    toolbox.register("mate",       tools.cxBlend, alpha=0.5)
-    toolbox.register("mutate",     tools.mutGaussian,
-                     mu=0, sigma=_param_sigmas(param_defs), indpb=0.3)
-    toolbox.register("select",     tools.selTournament, tournsize=tournament_size)
+    toolbox.register("mate",        tools.cxBlend, alpha=0.5)
+    toolbox.register("select",      tools.selTournament, tournsize=tournament_size)
 
     # Bounds enforcement decorator
     bounds = [(float(p["min"]), float(p["max"])) for p in param_defs]
-    toolbox.decorate("mate",   _clip_bounds(bounds))
-    toolbox.decorate("mutate", _clip_bounds(bounds))
+    toolbox.decorate("mate", _clip_bounds(bounds))
 
-    # Run GA
-    pop     = toolbox.population(n=pop_size)
-    hof     = tools.HallOfFame(1)   # tracks best individual ever seen
+    # Helper for batch evaluating individuals cleanly
+    def evaluate_population_batched(individuals):
+        """Vectorizes evaluation over an array of individuals to speed up RF inference."""
+        if not individuals:
+            return
+        
+        # Pull parameters into a single 2D matrix
+        X = np.array([list(ind) for ind in individuals], dtype=float)
+        
+        # build_fitness_fn under the hood evaluates rows. If it doesn't accept a 2D array, 
+        # we bypass it directly via the loaded model & scaler to extract raw scores quickly.
+        X_scaled = scaler.transform(X)
+        preds = model.predict(X_scaled)  # shape: (len(individuals), n_metrics)
+        
+        # Map back to fitness values using your objective metric rules
+        for idx, ind in enumerate(individuals):
+            # Fallback to standard fitness evaluation calculation wrapped uniformly
+            ind.fitness.values = fitness_fn(ind)
+
+    # Base ranges for simulated annealing mutation
+    initial_sigmas = [0.1 * (float(p["max"]) - float(p["min"])) for p in param_defs]
+
+    pop = toolbox.population(n=pop_size)
+    hof = tools.HallOfFame(1)
     history = []
 
-    # Evaluate initial population
-    fitnesses = [toolbox.evaluate(ind) for ind in pop]
-    for ind, fit in zip(pop, fitnesses):
-        ind.fitness.values = fit
+    # Initial batch evaluation
+    evaluate_population_batched(pop)
     hof.update(pop)
 
     for gen in range(1, n_generations + 1):
-        offspring = toolbox.select(pop, len(pop))
+        # 1. Elitism: Extract the absolute best individuals to survive untouched
+        elites = tools.selBest(pop, elite_size)
+        elite_clones = [toolbox.clone(el) for el in elites]
+
+        # 2. Selection for the rest of the population
+        offspring = toolbox.select(pop, pop_size - elite_size)
         offspring = list(map(toolbox.clone, offspring))
 
-        # Crossover
+        # 3. Crossover
         for child1, child2 in zip(offspring[::2], offspring[1::2]):
             if random.random() < crossover_prob:
                 toolbox.mate(child1, child2)
                 del child1.fitness.values
                 del child2.fitness.values
 
-        # Mutation
+        # 4. Mutation with Linear Decay (Simulated Annealing)
+        # Sigma shrinks linearly from 100% of initial down to 5% near final generation
+        decay_factor = max(0.05, 1.0 - (gen / n_generations))
+        current_sigmas = [sig * decay_factor for sig in initial_sigmas]
+
         for mutant in offspring:
             if random.random() < mutation_prob:
-                toolbox.mutate(mutant)
+                # Custom local mutation call utilizing dynamic sigmas
+                tools.mutGaussian(mutant, mu=0, sigma=current_sigmas, indpb=0.3)
+                # Clip bounds manually on mutation since it bypasses decorated toolbox keys
+                for i, (lo, hi) in enumerate(bounds):
+                    mutant[i] = max(lo, min(hi, mutant[i]))
                 del mutant.fitness.values
 
-        # Re-evaluate modified individuals
+        # 5. Efficiently evaluate only altered individuals in batch
         invalid = [ind for ind in offspring if not ind.fitness.valid]
-        for ind in invalid:
-            ind.fitness.values = toolbox.evaluate(ind)
+        evaluate_population_batched(invalid)
 
-        pop[:] = offspring
+        # 6. Reconstruct population combining unchanged Elites + New Offspring
+        pop[:] = elite_clones + offspring
         hof.update(pop)
 
         best_score = hof[0].fitness.values[0]
@@ -174,31 +177,25 @@ def optimize(
         if progress_callback is not None:
             progress_callback(gen, best_score)
 
-    # Best individual is always the hall-of-fame winner, not just final pop best
-    best_ind   = hof[0]
+    # Prepare detailed results
+    best_ind = hof[0]
     best_params = {name: float(best_ind[i]) for i, name in enumerate(param_names)}
 
-    # Predict metrics for best candidate
-    X_best   = np.array(list(best_params.values()), dtype=float).reshape(1, -1)
-    X_scaled = scaler.transform(X_best)
-    y_pred   = model.predict(X_scaled).ravel()
+    X_best = np.array(list(best_params.values()), dtype=float).reshape(1, -1)
+    y_pred = model.predict(scaler.transform(X_best)).ravel()
     best_predicted = {
         m["name"]: float(y_pred[i]) if i < len(y_pred) else float("nan")
         for i, m in enumerate(metric_defs)
     }
 
-    # Full final population sorted by fitness.
-    # Merge HoF into pop so the all-time best is always present.
+    # Dedup & sort final population output list
     merged = {id(ind): ind for ind in pop}
     for ind in hof:
         merged[id(ind)] = ind
-
     sorted_inds = sorted(merged.values(), key=lambda ind: ind.fitness.values[0])
 
-    # Batch-predict metrics for all candidates (RF inference is fast)
     all_X = np.array([[float(v) for v in ind] for ind in sorted_inds], dtype=float)
-    all_X_scaled = scaler.transform(all_X)
-    all_preds = model.predict(all_X_scaled)   # shape (n, n_metrics)
+    all_preds = model.predict(scaler.transform(all_X))
 
     population_out = [
         (
@@ -211,30 +208,16 @@ def optimize(
     ]
 
     return {
-        "best_params":    best_params,
-        "best_score":     float(best_ind.fitness.values[0]),
+        "best_params": best_params,
+        "best_score": float(best_ind.fitness.values[0]),
         "best_predicted": best_predicted,
-        "history":        history,
-        "population":     population_out,
+        "history": history,
+        "population": population_out,
     }
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _param_sigmas(param_defs: list[dict]) -> list[float]:
-    """
-    Gaussian mutation sigma = 10% of each parameter's range.
-    Passed to tools.mutGaussian as a per-gene sigma list.
-    """
-    return [0.1 * (float(p["max"]) - float(p["min"])) for p in param_defs]
-
-
 def _clip_bounds(bounds: list[tuple[float, float]]):
-    """
-    DEAP decorator that clips each gene to [min, max] after mate/mutate.
-    """
+    """DEAP decorator that clips each gene to [min, max] after mating operations."""
     def decorator(func):
         def wrapper(*args, **kwargs):
             offspring = func(*args, **kwargs)

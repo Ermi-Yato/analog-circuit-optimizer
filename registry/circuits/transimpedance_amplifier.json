@@ -52,7 +52,7 @@
     "r2_scores": {
       "Transimpedance_dBOhm": 0.9998494128649218,
       "Bandwidth_Hz": 0.9975033213231532,
-      "Phase_Margin_deg": 0.7136211837615781
+      "Phase_Margin_deg": 0.7136211837615822
     }
   }
 }
