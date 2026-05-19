@@ -7,4 +7,6 @@ seaborn
 PySide6
 schemdraw
 deap
+scipy
+optuna
 pytest

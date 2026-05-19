@@ -23,6 +23,21 @@ TEXT   = "#e6edf3"
 TEXT_S = "#8b949e"
 
 
+class SchematicWidget(FigureCanvasQTAgg):
+    """Read-only canvas that displays an externally-provided matplotlib Figure."""
+
+    def __init__(self, parent=None):
+        fig = Figure(facecolor=BG0, tight_layout=True)
+        super().__init__(fig)
+        self.setParent(parent)
+
+    def set_figure(self, fig: Figure):
+        """Replace the displayed figure with *fig* and redraw."""
+        self.figure = fig
+        self.figure.set_canvas(self)
+        self.draw_idle()
+
+
 class PlotWidget(FigureCanvasQTAgg):
     def __init__(self, bg: str = BG0, parent=None):
         self._bg = bg

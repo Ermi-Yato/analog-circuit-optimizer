@@ -26,6 +26,7 @@ from deap import base, creator, tools
 
 import registry.circuit_registry as reg
 from core.models.random_forest import RandomForestModel
+from core.models.mlp import MLPModel
 from core.optimization.objective import build_fitness_fn
 
 
@@ -71,23 +72,45 @@ def optimize(
 
     model_path  = os.path.join(_PROJECT_ROOT, model_block["surrogate_path"])
     scaler_path = os.path.join(_PROJECT_ROOT, model_block["scaler_path"])
-
     for p in (model_path, scaler_path):
         if not os.path.isfile(p):
             raise FileNotFoundError(f"Model file not found: {p}")
 
-    model = RandomForestModel()
+    model_type = model_block.get("model_type", "random_forest")
+    model = MLPModel() if model_type == "mlp" else RandomForestModel()
     model.load(model_path)
     scaler = joblib.load(scaler_path)
 
-    fitness_fn = build_fitness_fn(model, scaler, targets, metric_defs, weights)
+    # Indices of log-scale parameters — need log10 before scaler.transform
+    log_indices = [i for i, p in enumerate(param_defs) if p.get("scale") == "log"]
+
+    # Indices of log-scale metrics — model predicts log10(value); inverse at inference
+    log_metric_names   = model_block.get("log_metrics", [])
+    log_metric_indices = [i for i, m in enumerate(metric_defs) if m["name"] in log_metric_names]
+
+    # Pre-compute fitness weight and scale tables for batch evaluation
+    metric_names = [m["name"] for m in metric_defs]
+    _weights = {n: 1.0 for n in metric_names} if weights is None else {n: weights.get(n, 1.0) for n in metric_names}
+    _scales  = {n: abs(targets[n]) if n in targets and abs(targets.get(n, 0)) > 1e-12 else 1.0
+                for n in metric_names}
+
+    fitness_fn = build_fitness_fn(model, scaler, targets, metric_defs, weights,
+                                  log_indices=log_indices or None,
+                                  log_metric_indices=log_metric_indices or None)
 
     # DEAP toolbox setup
     toolbox = base.Toolbox()
 
+    import math
     for p in param_defs:
         lo, hi = float(p["min"]), float(p["max"])
-        toolbox.register(f"attr_{p['name']}", random.uniform, lo, hi)
+        if p.get("scale") == "log":
+            # Sample uniformly in log space so all decades are equally represented
+            ll, lh = math.log10(lo), math.log10(hi)
+            toolbox.register(f"attr_{p['name']}",
+                             lambda ll=ll, lh=lh: 10.0 ** random.uniform(ll, lh))
+        else:
+            toolbox.register(f"attr_{p['name']}", random.uniform, lo, hi)
 
     attr_fns = [getattr(toolbox, f"attr_{p['name']}") for p in param_defs]
 
@@ -103,27 +126,51 @@ def optimize(
     bounds = [(float(p["min"]), float(p["max"])) for p in param_defs]
     toolbox.decorate("mate", _clip_bounds(bounds))
 
-    # Helper for batch evaluating individuals cleanly
     def evaluate_population_batched(individuals):
-        """Vectorizes evaluation over an array of individuals to speed up RF inference."""
+        """
+        True batch evaluation — single model forward pass for all individuals.
+        Avoids N separate scaler.transform + predict calls (critical for MLP).
+        """
         if not individuals:
             return
-        
-        # Pull parameters into a single 2D matrix
+
         X = np.array([list(ind) for ind in individuals], dtype=float)
-        
-        # build_fitness_fn under the hood evaluates rows. If it doesn't accept a 2D array, 
-        # we bypass it directly via the loaded model & scaler to extract raw scores quickly.
-        X_scaled = scaler.transform(X)
-        preds = model.predict(X_scaled)  # shape: (len(individuals), n_metrics)
-        
-        # Map back to fitness values using your objective metric rules
-        for idx, ind in enumerate(individuals):
-            # Fallback to standard fitness evaluation calculation wrapped uniformly
-            ind.fitness.values = fitness_fn(ind)
+        if log_indices:
+            X = X.copy()
+            X[:, log_indices] = np.log10(np.abs(X[:, log_indices]).clip(1e-300))
+        preds = model.predict(scaler.transform(X))   # (n_inds, n_metrics)
+        if preds.ndim == 1:
+            preds = preds.reshape(-1, 1)
+        # Inverse-transform log-metric columns (model predicted log10, we need linear)
+        if log_metric_indices:
+            preds = preds.copy()
+            for mi in log_metric_indices:
+                if mi < preds.shape[1]:
+                    preds[:, mi] = 10.0 ** np.clip(preds[:, mi], -300, 300)
+
+        for row, ind in enumerate(individuals):
+            score = 0.0
+            for i, name in enumerate(metric_names):
+                if name not in targets:
+                    continue
+                predicted = float(preds[row, i]) if i < preds.shape[1] else 0.0
+                score += _weights[name] * abs(predicted - targets[name]) / _scales[name]
+            ind.fitness.values = (score,)
 
     # Base ranges for simulated annealing mutation
-    initial_sigmas = [0.1 * (float(p["max"]) - float(p["min"])) for p in param_defs]
+    # Log-scale params: sigma is 10% of the log10 range, converted back to linear
+    # to keep mutations proportional across decades (e.g. 1 decade sigma for C).
+    initial_sigmas = []
+    for p in param_defs:
+        lo, hi = float(p["min"]), float(p["max"])
+        if p.get("scale") == "log":
+            # Sigma in log space = 0.1 * (log10_hi - log10_lo) decades
+            # Sigma in linear space = 0.1 * (hi - lo) in log-space → use geometric midpoint
+            log_range = math.log10(hi) - math.log10(lo)
+            mid_log   = 0.5 * (math.log10(lo) + math.log10(hi))
+            initial_sigmas.append(0.1 * (10.0 ** (mid_log + log_range / 2) - 10.0 ** (mid_log - log_range / 2)))
+        else:
+            initial_sigmas.append(0.1 * (hi - lo))
 
     pop = toolbox.population(n=pop_size)
     hof = tools.HallOfFame(1)
@@ -181,8 +228,23 @@ def optimize(
     best_ind = hof[0]
     best_params = {name: float(best_ind[i]) for i, name in enumerate(param_names)}
 
+    def _predict_linear(X: np.ndarray) -> np.ndarray:
+        """Apply feature log-transform, run model, inverse-transform log metrics."""
+        if log_indices:
+            X = X.copy()
+            X[:, log_indices] = np.log10(np.abs(X[:, log_indices]).clip(1e-300))
+        preds = model.predict(scaler.transform(X))
+        if preds.ndim == 1:
+            preds = preds.reshape(-1, 1)
+        if log_metric_indices:
+            preds = preds.copy()
+            for mi in log_metric_indices:
+                if mi < preds.shape[1]:
+                    preds[:, mi] = 10.0 ** np.clip(preds[:, mi], -300, 300)
+        return preds
+
     X_best = np.array(list(best_params.values()), dtype=float).reshape(1, -1)
-    y_pred = model.predict(scaler.transform(X_best)).ravel()
+    y_pred = _predict_linear(X_best).ravel()
     best_predicted = {
         m["name"]: float(y_pred[i]) if i < len(y_pred) else float("nan")
         for i, m in enumerate(metric_defs)
@@ -195,7 +257,7 @@ def optimize(
     sorted_inds = sorted(merged.values(), key=lambda ind: ind.fitness.values[0])
 
     all_X = np.array([[float(v) for v in ind] for ind in sorted_inds], dtype=float)
-    all_preds = model.predict(scaler.transform(all_X))
+    all_preds = _predict_linear(all_X)
 
     population_out = [
         (

@@ -22,9 +22,10 @@ class TrainingWorker(QThread):
     stopped  = Signal()
     error    = Signal(str)
 
-    def __init__(self, circuit_id: str, parent=None):
+    def __init__(self, circuit_id: str, model_type: str = "random_forest", parent=None):
         super().__init__(parent)
         self._circuit_id = circuit_id
+        self._model_type = model_type
         self._stop       = False
 
     def stop(self):
@@ -45,7 +46,7 @@ class TrainingWorker(QThread):
                 self.stopped.emit()
                 return
 
-            metrics = train(self._circuit_id, verbose=False)
+            metrics = train(self._circuit_id, verbose=False, model_type=self._model_type)
 
             if self._stop:
                 self.stopped.emit()

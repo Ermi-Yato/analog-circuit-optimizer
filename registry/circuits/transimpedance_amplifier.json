@@ -29,30 +29,35 @@
       "name": "Transimpedance_dBOhm",
       "label": "Transimpedance Gain",
       "unit": "dBΩ",
-      "optimize": "maximize"
+      "optimize": "maximize",
+      "target_default": 100.0
     },
     {
       "name": "Bandwidth_Hz",
       "label": "-3dB Bandwidth",
       "unit": "Hz",
-      "optimize": "maximize"
+      "optimize": "maximize",
+      "target_default": 1000000.0
     },
     {
       "name": "Phase_Margin_deg",
       "label": "Phase Margin",
       "unit": "°",
-      "optimize": "maximize"
+      "optimize": "maximize",
+      "target_default": 60.0
     }
   ],
   "model": {
     "surrogate_path": "trained_models/transimpedance_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/transimpedance_amplifier/feature_scaler.pkl",
-    "trained_on": "2026-05-18",
-    "samples": 5000,
+    "trained_on": "2026-05-19",
+    "samples": 2000,
     "r2_scores": {
-      "Transimpedance_dBOhm": 0.9998494128649218,
-      "Bandwidth_Hz": 0.9975033213231532,
-      "Phase_Margin_deg": 0.7136211837615822
-    }
+      "Transimpedance_dBOhm": 0.999481731682818,
+      "Bandwidth_Hz": 0.9961233669889795,
+      "Phase_Margin_deg": 0.40278936848220315
+    },
+    "model_type": "random_forest",
+    "log_metrics": []
   }
 }

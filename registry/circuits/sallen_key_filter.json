@@ -47,23 +47,32 @@
       "name": "Cutoff_Freq_Hz",
       "label": "Cutoff Frequency (-3dB)",
       "unit": "Hz",
-      "optimize": "maximize"
+      "optimize": "maximize",
+      "scale": "log",
+      "target_default": 10000.0
     },
     {
       "name": "Q_factor",
       "label": "Quality Factor",
       "unit": "",
-      "optimize": "maximize"
+      "optimize": "maximize",
+      "scale": "log",
+      "target_default": 0.707
     }
   ],
   "model": {
     "surrogate_path": "trained_models/sallen_key_filter/circuit_model.pkl",
     "scaler_path": "trained_models/sallen_key_filter/feature_scaler.pkl",
     "trained_on": "2026-05-18",
-    "samples": 2000,
+    "samples": 1000,
     "r2_scores": {
-      "Cutoff_Freq_Hz": 0.6795265548131629,
-      "Q_factor": 0.9387899354780402
-    }
+      "Cutoff_Freq_Hz": 0.9985732749220467,
+      "Q_factor": 0.9995394086198569
+    },
+    "model_type": "mlp",
+    "log_metrics": [
+      "Cutoff_Freq_Hz",
+      "Q_factor"
+    ]
   }
 }

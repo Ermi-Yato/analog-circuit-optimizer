@@ -207,7 +207,17 @@ class DatasetView(QWidget):
 
         return container
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._refresh_circuits()
+
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def select_circuit(self, circuit_id: str):
+        for i in range(self._combo_circuit.count()):
+            if self._combo_circuit.itemData(i) == circuit_id:
+                self._combo_circuit.setCurrentIndex(i)
+                return
 
     def _refresh_circuits(self):
         self._combo_circuit.clear()
@@ -306,9 +316,14 @@ class DatasetView(QWidget):
         self._status_label.setText("Cancelled.")
 
     def _on_error(self, msg: str):
+        from PySide6.QtWidgets import QMessageBox
         self._set_busy(False)
         self._status_label.setStyleSheet(f"color: {RED}; font-size: 12px;")
-        self._status_label.setText(f"Error: {msg}")
+        # Show short version in status bar; pop a dialog for multi-line errors
+        first_line = msg.splitlines()[0] if msg else "Unknown error"
+        self._status_label.setText(f"Error: {first_line}")
+        if "\n" in msg:
+            QMessageBox.critical(self, "Dataset Generation Failed", msg)
 
     def _populate_table(self, df):
         preview = df.head(_PREVIEW_ROWS)

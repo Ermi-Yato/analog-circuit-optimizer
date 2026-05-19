@@ -1,9 +1,14 @@
+import os
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QStackedWidget, QStatusBar, QLabel, QPushButton, QFrame,
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon, QPixmap
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_LOGO_PATH    = os.path.join(_PROJECT_ROOT, "logo.jpg")
 
 from app.views.dashboard_view       import DashboardView
 from app.views.circuit_manager_view import CircuitManagerView
@@ -12,7 +17,7 @@ from app.views.training_view        import TrainingView
 from app.views.optimizer_view       import OptimizerView
 from app.views.results_view         import ResultsView
 
-# Design tokens (shared with views)
+# Design tokens
 BG0    = "#0d1117"
 BG1    = "#161b22"
 BG2    = "#1c2128"
@@ -75,15 +80,35 @@ class _NavButton(QPushButton):
         super().leaveEvent(e)
 
 
+class _ToggleButton(QPushButton):
+    """Small hamburger button, always accessible."""
+    def __init__(self, parent=None):
+        super().__init__("☰", parent)
+        self.setFixedSize(32, 32)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Toggle sidebar")
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {TEXT_S};
+                border: none; border-radius: 6px;
+                font-size: 15px;
+            }}
+            QPushButton:hover {{ background: {BG2}; color: {TEXT}; }}
+            QPushButton:pressed {{ background: {BORDER}; }}
+        """)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, ngspice_available: bool = False):
         super().__init__()
         self.setWindowTitle("Xtal")
+        self.setWindowIcon(QIcon(_LOGO_PATH))
         self.setMinimumSize(1100, 700)
         self.setStyleSheet(f"background: {BG0};")
 
         self._ngspice_available = ngspice_available
         self._nav_buttons: list[_NavButton] = []
+        self._sidebar_visible = False   # starts hidden
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -91,19 +116,33 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        root.addWidget(self._build_sidebar())
+        self._sidebar = self._build_sidebar()
+        root.addWidget(self._sidebar)
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setFixedWidth(1)
-        sep.setStyleSheet(f"background: {BORDER}; border: none;")
-        root.addWidget(sep)
+        self._sep = QFrame()
+        self._sep.setFrameShape(QFrame.Shape.VLine)
+        self._sep.setFixedWidth(1)
+        self._sep.setStyleSheet(f"background: {BORDER}; border: none;")
+        root.addWidget(self._sep)
 
         self._stack = self._build_stack()
         root.addWidget(self._stack)
 
+        # Floating toggle button — always on top when sidebar is hidden
+        self._float_toggle = _ToggleButton(central)
+        self._float_toggle.clicked.connect(self._toggle_sidebar)
+        self._float_toggle.raise_()
+        self._float_toggle.move(6, 12)
+
         self._build_status_bar()
         self._select(0)
+
+        # Apply initial hidden state without animation
+        self._sidebar.setVisible(False)
+        self._sep.setVisible(False)
+        self._float_toggle.show()
+
+    # ── Sidebar build ─────────────────────────────────────────────────────────
 
     def _build_sidebar(self) -> QWidget:
         sidebar = QWidget()
@@ -114,11 +153,34 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        title = QLabel("  Xtal")
-        title.setFixedHeight(56)
-        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        title.setStyleSheet(f"color: {TEXT}; background: {BG1}; padding-left: 4px;")
-        layout.addWidget(title)
+        # Title row with logo, name, and collapse button
+        title_row = QWidget()
+        title_row.setFixedHeight(56)
+        title_row.setStyleSheet(f"background: {BG1};")
+        tr = QHBoxLayout(title_row)
+        tr.setContentsMargins(12, 0, 8, 0)
+        tr.setSpacing(8)
+
+        logo_lbl = QLabel()
+        pix = QPixmap(_LOGO_PATH)
+        if not pix.isNull():
+            logo_lbl.setPixmap(pix.scaled(26, 26,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
+        logo_lbl.setStyleSheet("background: transparent;")
+        tr.addWidget(logo_lbl)
+
+        name_lbl = QLabel("Xtal")
+        name_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        name_lbl.setStyleSheet(f"color: {TEXT}; background: transparent;")
+        tr.addWidget(name_lbl, 1)
+
+        # Collapse button inside sidebar header
+        collapse_btn = _ToggleButton()
+        collapse_btn.clicked.connect(self._toggle_sidebar)
+        tr.addWidget(collapse_btn)
+
+        layout.addWidget(title_row)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -141,9 +203,15 @@ class MainWindow(QMainWindow):
 
         return sidebar
 
+    # ── Stack build ───────────────────────────────────────────────────────────
+
     def _build_stack(self) -> QStackedWidget:
         stack = QStackedWidget()
-        stack.addWidget(DashboardView())
+        self._dashboard = DashboardView(
+            navigate_cb=self.navigate_to,
+            ngspice_available=self._ngspice_available,
+        )
+        stack.addWidget(self._dashboard)
         stack.addWidget(CircuitManagerView())
         stack.addWidget(DatasetView())
         stack.addWidget(TrainingView())
@@ -156,6 +224,8 @@ class MainWindow(QMainWindow):
         stack.addWidget(results_view)
         return stack
 
+    # ── Status bar ────────────────────────────────────────────────────────────
+
     def _build_status_bar(self):
         bar = QStatusBar()
         bar.setStyleSheet(f"background: {BG1}; border-top: 1px solid {BORDER};")
@@ -165,15 +235,32 @@ class MainWindow(QMainWindow):
             lbl = QLabel("ngspice: available")
             lbl.setStyleSheet(f"color: {GREEN}; padding: 0 10px; font-size: 11px;")
         else:
-            lbl = QLabel("ngspice: NOT FOUND — simulation disabled")
+            lbl = QLabel("ngspice: NOT FOUND  simulation disabled")
             lbl.setStyleSheet(f"color: {RED}; padding: 0 10px; font-size: 11px;")
 
         bar.addPermanentWidget(lbl)
+
+    # ── Toggle ────────────────────────────────────────────────────────────────
+
+    def _toggle_sidebar(self):
+        self._sidebar_visible = not self._sidebar_visible
+        self._sidebar.setVisible(self._sidebar_visible)
+        self._sep.setVisible(self._sidebar_visible)
+        # Float button: visible only when sidebar is hidden
+        self._float_toggle.setVisible(not self._sidebar_visible)
+
+    # ── Navigation ────────────────────────────────────────────────────────────
 
     def _select(self, index: int):
         self._stack.setCurrentIndex(index)
         for i, btn in enumerate(self._nav_buttons):
             btn.setSelected(i == index)
+        if index == 0:
+            self._dashboard.refresh()
 
-    def navigate_to(self, index: int):
+    def navigate_to(self, index: int, circuit_id: str | None = None):
         self._select(index)
+        if circuit_id:
+            view = self._stack.widget(index)
+            if hasattr(view, "select_circuit"):
+                view.select_circuit(circuit_id)

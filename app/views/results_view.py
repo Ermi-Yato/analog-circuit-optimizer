@@ -342,6 +342,16 @@ class ResultsView(QWidget):
         fi          = data["feature_importances"]
         param_names = data["param_names"]
         if fi is None:
+            fig = self._importance_chart.figure
+            fig.clear()
+            fig.set_facecolor(BG0)
+            ax = fig.add_subplot(111)
+            self._style_ax(ax)
+            ax.text(0.5, 0.5, "Feature importance\nnot available for MLP",
+                    ha="center", va="center", transform=ax.transAxes,
+                    color=TEXT_DIM, fontsize=11)
+            ax.set_axis_off()
+            self._importance_chart.draw()
             return
 
         idx    = np.argsort(fi)
@@ -376,6 +386,11 @@ class ResultsView(QWidget):
             self._style_ax(ax)
             col       = _METRIC_COLORS[i % len(_METRIC_COLORS)]
             residuals = y_test[:, i] - y_pred[:, i]
+            residuals = residuals[np.isfinite(residuals)]
+            if len(residuals) == 0:
+                ax.text(0.5, 0.5, "No finite\nresiduals", transform=ax.transAxes,
+                        ha="center", va="center", color=TEXT_SUB, fontsize=9)
+                continue
             ax.hist(residuals, bins=30, alpha=0.7, color=col, edgecolor="none")
             ax.axvline(0, color=TEXT_DIM, linewidth=1, linestyle="--")
             ax.set_title(name, color=TEXT, fontsize=9, pad=6)
@@ -437,7 +452,7 @@ class ResultsView(QWidget):
             import numpy as np
             import registry.circuit_registry as reg_inner
             from core.validation.spice_validator import validate
-            from core.models.random_forest import RandomForestModel
+            from core.models.trainer import load_model as _load_model
 
             circuit    = reg_inner.get(circuit_id)
             param_defs = circuit["parameters"]
@@ -455,12 +470,15 @@ class ResultsView(QWidget):
                 model_block = circuit.get("model")
                 if model_block:
                     try:
-                        m_path = os.path.join(_ROOT, model_block["surrogate_path"])
                         s_path = os.path.join(_ROOT, model_block["scaler_path"])
-                        model  = RandomForestModel()
-                        model.load(m_path)
+                        model  = _load_model(circuit_id)
                         scaler = joblib.load(s_path)
-                        X      = np.array([[params[p["name"]] for p in param_defs]])
+                        log_idx = [i for i, p in enumerate(param_defs)
+                                   if p.get("scale") == "log"]
+                        X = np.array([[params[p["name"]] for p in param_defs]], dtype=float)
+                        if log_idx:
+                            X = X.copy()
+                            X[:, log_idx] = np.log10(np.abs(X[:, log_idx]).clip(1e-300))
                         X_sc   = scaler.transform(X)
                         y_p    = model.predict(X_sc).ravel()
                         mnames = [m["name"] for m in circuit["metrics"]]

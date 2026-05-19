@@ -156,15 +156,13 @@ class TestSchemaContent:
         assert "surrogate_path" in c["model"]
         assert "scaler_path" in c["model"]
 
-    def test_stub_circuits_have_no_model_block(self):
-        stub_ids = [
-            "differential_amplifier",
-            "sallen_key_filter",
-            "transimpedance_amplifier",
-            "class_a_amplifier",
-        ]
-        for cid in stub_ids:
-            assert "model" not in self.circuits[cid], f"{cid} should have no model block"
+    def test_all_circuits_have_model_block(self):
+        # All 5 circuits are now trained (Phase 12 complete)
+        for cid in ["common_emitter_amplifier", "differential_amplifier",
+                    "sallen_key_filter", "transimpedance_amplifier", "class_a_amplifier"]:
+            assert "model" in self.circuits[cid], f"{cid} should have a model block"
+            assert "surrogate_path" in self.circuits[cid]["model"]
+            assert "scaler_path" in self.circuits[cid]["model"]
 
 
 # ---------------------------------------------------------------------------
@@ -201,19 +199,22 @@ class TestGet:
 
 class TestModelExists:
 
-    def test_false_for_stub_circuits(self):
+    def test_model_exists_returns_bool(self):
+        # Smoke test: model_exists always returns a bool, never raises
         reg.load_all()
-        for cid in ["differential_amplifier", "sallen_key_filter",
-                    "transimpedance_amplifier", "class_a_amplifier"]:
-            assert reg.model_exists(cid) is False
+        for cid in ["common_emitter_amplifier", "differential_amplifier",
+                    "sallen_key_filter", "transimpedance_amplifier", "class_a_amplifier"]:
+            assert isinstance(reg.model_exists(cid), bool)
 
     def test_false_for_unknown_id(self):
         assert reg.model_exists("nonexistent") is False
 
     def test_false_when_no_model_block(self):
-        reg.load_all()
-        assert "model" not in reg.get("differential_amplifier")
-        assert reg.model_exists("differential_amplifier") is False
+        # Use a synthetic circuit dict with no model block
+        from unittest.mock import patch
+        no_model = {"id": "fake", "name": "Fake", "parameters": [], "metrics": []}
+        with patch.object(reg, "_cache", {"fake": no_model}):
+            assert reg.model_exists("fake") is False
 
     def test_true_when_both_pkls_present(self):
         circuit = reg.get("common_emitter_amplifier")

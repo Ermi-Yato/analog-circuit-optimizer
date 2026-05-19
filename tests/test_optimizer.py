@@ -203,7 +203,7 @@ class TestOptimize:
 
     def test_bounds_respected(self, fake_model_files):
         result = self._run(fake_model_files)
-        for params, _ in result["population"]:
+        for params, _score, _predicted in result["population"]:
             for p in PARAM_DEFS_4:
                 assert params[p["name"]] >= p["min"], f"{p['name']} below min"
                 assert params[p["name"]] <= p["max"], f"{p['name']} above max"
@@ -233,7 +233,7 @@ class TestOptimize:
 
     def test_population_sorted_by_score(self, fake_model_files):
         result = self._run(fake_model_files)
-        scores = [s for _, s in result["population"]]
+        scores = [s for _, s, _ in result["population"]]
         assert scores == sorted(scores)
 
     def test_progress_callback_called_each_generation(self, fake_model_files):

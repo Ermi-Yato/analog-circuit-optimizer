@@ -201,6 +201,55 @@ _EXTRACTORS: dict[str, Callable] = {
     "Efficiency_percent":    _efficiency_percent,
 }
 
+# Pattern-based fallback: (lowercase fragment, sim_type_or_None) -> extractor
+_PATTERN_FALLBACKS: list[tuple[str, str | None, Callable]] = [
+    # AC patterns
+    ("gain",      "ac",        _peak_gain_db),
+    ("db",        "ac",        _peak_gain_db),
+    ("bandwidth", "ac",        _bandwidth_hz),
+    ("_bw",       "ac",        _bandwidth_hz),
+    ("_hz",       "ac",        _bandwidth_hz),
+    ("freq",      "ac",        _cutoff_freq_hz),
+    ("cutoff",    "ac",        _cutoff_freq_hz),
+    ("phase",     "ac",        _phase_at_bw),
+    ("impedance", "ac",        _transimpedance_dbohm),
+    # Transient patterns
+    ("swing",     "transient", _output_swing_v),
+    ("_v",        "transient", _output_swing_v),
+    ("thd",       "transient", _thd_percent),
+    ("distortion","transient", _thd_percent),
+    ("efficiency","transient", _efficiency_percent),
+    # Generic fallbacks (any sim type)
+    ("gain",      None,        _peak_gain_db),
+    ("db",        None,        _peak_gain_db),
+    ("_hz",       None,        _bandwidth_hz),
+    ("_v",        None,        _output_swing_v),
+]
+
+
+def _resolve_extractor(metric_name: str, sim_type: str) -> Callable | None:
+    """
+    Return the best extractor for a metric name.
+    1. Exact match in _EXTRACTORS
+    2. Pattern match in _PATTERN_FALLBACKS (sim-type-specific first, then generic)
+    3. None if nothing matches
+    """
+    fn = _EXTRACTORS.get(metric_name)
+    if fn is not None:
+        return fn
+
+    name_lower = metric_name.lower()
+    # sim-specific patterns first
+    for fragment, stype, extractor in _PATTERN_FALLBACKS:
+        if stype == sim_type and fragment in name_lower:
+            return extractor
+    # generic fallbacks
+    for fragment, stype, extractor in _PATTERN_FALLBACKS:
+        if stype is None and fragment in name_lower:
+            return extractor
+
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Parameter sampling
@@ -238,22 +287,26 @@ def _sample_params(param_defs: list[dict], n: int, rng: np.random.Generator) -> 
 # Metric extraction
 # ---------------------------------------------------------------------------
 
-def _extract_metrics(raw: dict, metric_names: list[str], params: dict) -> dict | None:
+def _extract_metrics(
+    raw: dict,
+    metric_names: list[str],
+    params: dict,
+    sim_type: str = "ac",
+) -> tuple[dict | None, str | None]:
     """
     Apply the appropriate extractor for each metric name.
-    Returns None if any required extractor is missing or raises an exception.
+    Returns (result_dict, None) on success, or (None, reason_str) on failure.
     """
     result: dict[str, float] = {}
     for name in metric_names:
-        extractor = _EXTRACTORS.get(name)
+        extractor = _resolve_extractor(name, sim_type)
         if extractor is None:
-            result[name] = np.nan
-            continue
+            return None, f"no extractor for metric '{name}'"
         try:
             result[name] = extractor(raw, params)
-        except Exception:
-            return None
-    return result
+        except Exception as exc:
+            return None, f"extractor error for '{name}': {exc}"
+    return result, None
 
 
 # ---------------------------------------------------------------------------
@@ -285,11 +338,12 @@ def generate(
         Rows with failed simulations are dropped.
         Also saved to data/<circuit_id>_dataset.csv.
     """
-    circuit     = reg.get(circuit_id)
-    param_defs  = circuit["parameters"]
-    metric_defs = circuit["metrics"]
+    circuit      = reg.get(circuit_id)
+    param_defs   = circuit["parameters"]
+    metric_defs  = circuit["metrics"]
     metric_names = [m["name"] for m in metric_defs]
     param_names  = [p["name"] for p in param_defs]
+    sim_type     = circuit.get("simulation_type", "ac")
 
     # Read SPICE template
     template_path = os.path.join(_PROJECT_ROOT, circuit["spice_template"])
@@ -317,24 +371,42 @@ def generate(
         max_workers=max_workers,
     )
 
+    # Validate metric extractors before running any sims
+    unresolved = [
+        name for name in metric_names
+        if _resolve_extractor(name, sim_type) is None
+    ]
+    if unresolved:
+        raise ValueError(
+            f"No extractor found for metric(s): {unresolved}.\n"
+            f"Rename them to match a known pattern (e.g. containing 'Gain', 'dB', "
+            f"'Bandwidth', 'Hz', 'Phase', 'Swing', 'THD') or add a custom extractor "
+            f"to core/dataset/generator.py."
+        )
+
     # Extract metrics from each result
     rows = []
-    failed = 0
+    failed_sim = 0
+    failed_nan = 0
+    failed_extract: dict[str, int] = {}
     for params, raw in zip(param_sets, raw_results):
         if raw is None:
-            failed += 1
+            failed_sim += 1
             continue
-        metrics = _extract_metrics(raw, metric_names, params)
+        metrics, reason = _extract_metrics(raw, metric_names, params, sim_type)
         if metrics is None:
-            failed += 1
+            key = reason or "extraction error"
+            failed_extract[key] = failed_extract.get(key, 0) + 1
             continue
         # Drop rows where any metric is NaN (unusable for training)
         if any(math.isnan(v) for v in metrics.values() if isinstance(v, float)):
-            failed += 1
+            failed_nan += 1
             continue
         row = {name: params[name] for name in param_names}
         row.update(metrics)
         rows.append(row)
+
+    failed = failed_sim + failed_nan + sum(failed_extract.values())
 
     df = pd.DataFrame(rows, columns=param_names + metric_names)
 
@@ -345,10 +417,17 @@ def generate(
 
     if verbose:
         success = len(rows)
-        print(f"\n  Completed  : {success}/{n_samples} successful ({failed} failed/NaN)")
+        print(f"\n  Completed  : {success}/{n_samples} successful ({failed} failed)")
+        if failed_sim:
+            print(f"  Sim errors : {failed_sim} (ngspice returned no output)")
+        if failed_nan:
+            print(f"  NaN rows   : {failed_nan} (metric returned NaN, row dropped)")
+        for reason, count in failed_extract.items():
+            print(f"  Extract err: {count}x — {reason}")
         print(f"  Saved to   : {out_path}")
         print()
-        print(preview(df))
+        if len(df) > 0:
+            print(preview(df))
 
     return df
 

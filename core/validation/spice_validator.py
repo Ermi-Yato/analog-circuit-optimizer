@@ -85,7 +85,7 @@ def validate(
             "simulation_ok": False,
         }
 
-    extracted = _extract_metrics(raw, metric_names, params)
+    extracted, _ = _extract_metrics(raw, metric_names, params)
 
     metrics_out = []
     for name in metric_names:

@@ -238,6 +238,15 @@ class TrainingView(QWidget):
         self._combo_circuit.setStyleSheet(_input_ss())
         self._combo_circuit.currentIndexChanged.connect(self._on_circuit_changed)
 
+        model_lbl = QLabel("Model")
+        model_lbl.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px;")
+        self._combo_model = QComboBox()
+        self._combo_model.setMinimumWidth(190)
+        self._combo_model.setStyleSheet(_input_ss())
+        self._combo_model.addItem("Random Forest",     userData="random_forest")
+        self._combo_model.addItem("MLP Neural Network", userData="mlp")
+        self._combo_model.addItem("Auto (best of both)", userData="auto")
+
         self._btn_train = QPushButton("Train Model")
         self._btn_train.setFixedHeight(36)
         self._btn_train.setMinimumWidth(130)
@@ -256,6 +265,9 @@ class TrainingView(QWidget):
 
         layout.addWidget(lbl)
         layout.addWidget(self._combo_circuit)
+        layout.addSpacing(16)
+        layout.addWidget(model_lbl)
+        layout.addWidget(self._combo_model)
         layout.addStretch()
         layout.addWidget(self._btn_train)
 
@@ -307,7 +319,17 @@ class TrainingView(QWidget):
 
         return container
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._refresh_circuits()
+
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def select_circuit(self, circuit_id: str):
+        for i in range(self._combo_circuit.count()):
+            if self._combo_circuit.itemData(i) == circuit_id:
+                self._combo_circuit.setCurrentIndex(i)
+                return
 
     def _refresh_circuits(self):
         self._combo_circuit.blockSignals(True)
@@ -343,6 +365,7 @@ class TrainingView(QWidget):
 
     def _set_busy(self, busy: bool):
         self._combo_circuit.setEnabled(not busy)
+        self._combo_model.setEnabled(not busy)
         if busy:
             self._status_label.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px;")
             self._btn_train.setText("Stop")
@@ -385,12 +408,14 @@ class TrainingView(QWidget):
         if not circuit_id:
             return
 
+        model_type = self._combo_model.currentData()
+
         self._set_busy(True)
         self._placeholder.hide()
         self._rebuild_cards(circuit_id)
         self._status_label.setText("Training in progress...")
 
-        self._worker = TrainingWorker(circuit_id)
+        self._worker = TrainingWorker(circuit_id, model_type=model_type)
         self._worker.status.connect(self._status_label.setText)
         self._worker.finished.connect(self._on_finished)
         self._worker.stopped.connect(self._on_stopped)
@@ -406,9 +431,11 @@ class TrainingView(QWidget):
 
     def _on_finished(self, metrics: dict):
         self._set_busy(False)
-        n_test = metrics.get("n_test", "?")
+        n_test     = metrics.get("n_test", "?")
+        used_type  = metrics.get("model_type", "random_forest")
+        type_label = "MLP Neural Network" if used_type == "mlp" else "Random Forest"
         self._status_label.setText(
-            f"Training complete — evaluated on {n_test} held-out samples."
+            f"Done — {type_label} · {n_test} held-out samples."
         )
         self._status_label.setStyleSheet(f"color: {GREEN}; font-size: 12px;")
 

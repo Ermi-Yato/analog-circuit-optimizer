@@ -77,6 +77,7 @@ class OptimizerView(QWidget):
         self._target_inputs: dict[str, QDoubleSpinBox] = {}
         self._history_x: list[int]   = []
         self._history_y: list[float] = []
+        self._last_chart_draw: float = 0.0   # throttle: time of last chart redraw
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -116,6 +117,18 @@ class OptimizerView(QWidget):
         self._combo_circuit.setStyleSheet(_input_ss())
         self._combo_circuit.currentIndexChanged.connect(self._on_circuit_changed)
 
+        algo_lbl = QLabel("Algorithm")
+        algo_lbl.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px;")
+        self._combo_algo = QComboBox()
+        self._combo_algo.addItem("Genetic Algorithm",         userData="ga")
+        self._combo_algo.addItem("Differential Evolution",   userData="differential_evolution")
+        self._combo_algo.addItem("Dual Annealing",           userData="dual_annealing")
+        self._combo_algo.addItem("Bayesian / TPE",           userData="bayesian_tpe")
+        self._combo_algo.addItem("Bayesian / CMA-ES",        userData="bayesian_cmaes")
+        self._combo_algo.setMinimumWidth(190)
+        self._combo_algo.setStyleSheet(_input_ss())
+        self._combo_algo.currentIndexChanged.connect(self._on_algo_changed)
+
         self._btn_optimize = QPushButton("Optimize")
         self._btn_optimize.setFixedHeight(36)
         self._btn_optimize.setMinimumWidth(130)
@@ -134,6 +147,9 @@ class OptimizerView(QWidget):
 
         layout.addWidget(lbl)
         layout.addWidget(self._combo_circuit)
+        layout.addSpacing(8)
+        layout.addWidget(algo_lbl)
+        layout.addWidget(self._combo_algo)
         layout.addStretch()
         layout.addWidget(self._btn_optimize)
         return bar
@@ -179,24 +195,179 @@ class OptimizerView(QWidget):
 
         layout.addWidget(_divider())
 
-        # GA settings
-        layout.addWidget(_eyebrow("GA Settings"))
-        ga_form = QVBoxLayout()
-        ga_form.setSpacing(10)
+        # Algorithm settings container — swapped by _on_algo_changed
+        self._algo_settings_container = QWidget()
+        self._algo_settings_container.setStyleSheet("background: transparent;")
+        self._algo_settings_layout = QVBoxLayout(self._algo_settings_container)
+        self._algo_settings_layout.setContentsMargins(0, 0, 0, 0)
+        self._algo_settings_layout.setSpacing(0)
+        layout.addWidget(self._algo_settings_container)
 
-        self._spin_generations = self._labeled_spin(
-            ga_form, "Generations", 10, 2000, 100
-        )
-        self._spin_pop = self._labeled_spin(
-            ga_form, "Population size", 20, 2000, 200
-        )
-        layout.addLayout(ga_form)
+        # Build algo-specific panels; only one visible at a time
+        self._panel_ga   = self._build_ga_panel()
+        self._panel_de   = self._build_de_panel()
+        self._panel_da   = self._build_da_panel()
+        self._panel_bo   = self._build_bo_panel()
+        for p in (self._panel_ga, self._panel_de, self._panel_da, self._panel_bo):
+            self._algo_settings_layout.addWidget(p)
+            p.setVisible(False)
+        self._panel_ga.setVisible(True)
+
+        layout.addWidget(_divider())
+
+        # Fitness function settings — shared across all algorithms
+        self._panel_fitness = self._build_fitness_panel()
+        layout.addWidget(self._panel_fitness)
+
         layout.addStretch()
 
         return scroll
 
+    def _build_ga_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setStyleSheet("background: transparent;")
+        form = QVBoxLayout(panel)
+        form.setContentsMargins(0, 0, 0, 10)
+        form.setSpacing(10)
+
+        form.addWidget(_eyebrow("GA Settings"))
+        self._spin_generations = self._labeled_spin(form, "Generations",  10, 2000, 100)
+        self._spin_pop         = self._labeled_spin(form, "Population",   20, 2000, 200)
+
+        form.addWidget(_divider())
+
+        btn_adv = QPushButton("Advanced  ▸")
+        btn_adv.setFlat(True)
+        btn_adv.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_adv.setStyleSheet(
+            f"color: {TEXT_SUB}; font-size: 11px; font-weight: 600; "
+            f"text-align: left; padding: 0; background: transparent; border: none;"
+        )
+        adv_container = QWidget()
+        adv_container.setStyleSheet("background: transparent;")
+        adv_container.setVisible(False)
+        adv_form = QVBoxLayout(adv_container)
+        adv_form.setContentsMargins(0, 0, 0, 0)
+        adv_form.setSpacing(10)
+        self._spin_mutation   = self._labeled_spin_float(adv_form, "Mutation rate",   0.0, 1.0, 0.2)
+        self._spin_crossover  = self._labeled_spin_float(adv_form, "Crossover rate",  0.0, 1.0, 0.7)
+        self._spin_elite      = self._labeled_spin(adv_form, "Elite size",     1, 50,  4)
+        self._spin_tournament = self._labeled_spin(adv_form, "Tournament size", 2, 20, 3)
+
+        def _toggle():
+            v = not adv_container.isVisible()
+            adv_container.setVisible(v)
+            btn_adv.setText("Advanced  ▾" if v else "Advanced  ▸")
+
+        btn_adv.clicked.connect(_toggle)
+        form.addWidget(btn_adv)
+        form.addWidget(adv_container)
+        return panel
+
+    def _build_de_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setStyleSheet("background: transparent;")
+        form = QVBoxLayout(panel)
+        form.setContentsMargins(0, 0, 0, 10)
+        form.setSpacing(10)
+
+        form.addWidget(_eyebrow("Differential Evolution"))
+        self._spin_de_maxiter      = self._labeled_spin(form, "Max iterations",    10, 5000, 300)
+        self._spin_de_popsize      = self._labeled_spin(form, "Pop size / dim",     5,   50,  15)
+        self._spin_de_mutation     = self._labeled_spin_float(form, "Mutation F",    0.0, 2.0, 0.7)
+        self._spin_de_recombination= self._labeled_spin_float(form, "Recombination", 0.0, 1.0, 0.7)
+        return panel
+
+    def _build_da_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setStyleSheet("background: transparent;")
+        form = QVBoxLayout(panel)
+        form.setContentsMargins(0, 0, 0, 10)
+        form.setSpacing(10)
+
+        form.addWidget(_eyebrow("Dual Annealing"))
+        self._spin_da_maxiter      = self._labeled_spin(form, "Max iterations",   100, 10000, 1000)
+        self._spin_da_initial_temp = self._labeled_spin_float(form, "Initial temp", 0.1, 50000.0, 5230.0)
+        return panel
+
+    def _build_bo_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setStyleSheet("background: transparent;")
+        form = QVBoxLayout(panel)
+        form.setContentsMargins(0, 0, 0, 10)
+        form.setSpacing(10)
+
+        form.addWidget(_eyebrow("Bayesian Optimization"))
+        self._spin_bo_trials  = self._labeled_spin(form, "Trials",          50, 5000, 300)
+        self._spin_bo_startup = self._labeled_spin(form, "Startup (random)", 5,  200,  20)
+        return panel
+
+    def _build_fitness_panel(self) -> QWidget:
+        panel = QWidget()
+        panel.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        layout.addWidget(_eyebrow("Fitness Function"))
+
+        loss_lbl = QLabel("Loss type")
+        loss_lbl.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px; background: transparent;")
+        self._combo_loss = QComboBox()
+        self._combo_loss.addItem("MAE — L1 (default)",  userData="mae")
+        self._combo_loss.addItem("MSE — L2",            userData="mse")
+        self._combo_loss.addItem("Huber — L1+L2 mix",  userData="huber")
+        self._combo_loss.addItem("Log — compress outliers", userData="log")
+        self._combo_loss.setStyleSheet(_input_ss())
+        layout.addWidget(loss_lbl)
+        layout.addWidget(self._combo_loss)
+
+        self._spin_dir_penalty = self._labeled_spin_float(
+            layout, "Direction penalty",
+            1.0, 10.0, 1.0,
+        )
+        self._spin_dir_penalty.setToolTip(
+            "Multiplier applied when prediction misses in the wrong direction.\n"
+            "1.0 = symmetric. 2.0 = double penalty for e.g. gain below target."
+        )
+        self._spin_dir_penalty.setSingleStep(0.25)
+
+        self._spin_tolerance = self._labeled_spin_float(
+            layout, "Tolerance band (%)",
+            0.0, 50.0, 0.0,
+        )
+        self._spin_tolerance.setToolTip(
+            "Dead-zone around target: errors within ±X% count as zero penalty.\n"
+            "0 = disabled (any deviation is penalised)."
+        )
+        self._spin_tolerance.setSingleStep(1.0)
+
+        return panel
+
+    def _on_algo_changed(self):
+        algo = self._combo_algo.currentData()
+        self._panel_ga.setVisible(algo == "ga")
+        self._panel_de.setVisible(algo == "differential_evolution")
+        self._panel_da.setVisible(algo == "dual_annealing")
+        self._panel_bo.setVisible(algo in ("bayesian_tpe", "bayesian_cmaes"))
+
+    def _labeled_spin_float(
+        self, layout, label: str, lo: float, hi: float, default: float
+    ) -> QDoubleSpinBox:
+        lbl = QLabel(label)
+        lbl.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px; background: transparent;")
+        spin = QDoubleSpinBox()
+        spin.setRange(lo, hi)
+        spin.setValue(default)
+        spin.setSingleStep(0.05)
+        spin.setDecimals(2)
+        spin.setStyleSheet(_input_ss())
+        layout.addWidget(lbl)
+        layout.addWidget(spin)
+        return spin
+
     def _labeled_spin(
-        self, layout: QVBoxLayout, label: str, lo: int, hi: int, default: int
+        self, layout, label: str, lo: int, hi: int, default: int
     ) -> QSpinBox:
         lbl = QLabel(label)
         lbl.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px; background: transparent;")
@@ -260,6 +431,12 @@ class OptimizerView(QWidget):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
+    def select_circuit(self, circuit_id: str):
+        for i in range(self._combo_circuit.count()):
+            if self._combo_circuit.itemData(i) == circuit_id:
+                self._combo_circuit.setCurrentIndex(i)
+                return
+
     def _refresh_circuits(self):
         self._combo_circuit.blockSignals(True)
         self._combo_circuit.clear()
@@ -279,6 +456,20 @@ class OptimizerView(QWidget):
         circuit_id = self._combo_circuit.currentData()
         trained = circuit_id and reg.model_exists(circuit_id)
         self._btn_optimize.setEnabled(bool(trained))
+
+        # Adapt GA defaults to model type (only if GA panel exists yet)
+        if trained and circuit_id and hasattr(self, "_spin_pop"):
+            try:
+                model_type = reg.get(circuit_id).get("model", {}).get("model_type", "random_forest")
+                if model_type == "mlp":
+                    self._spin_pop.setValue(100)
+                    self._spin_generations.setValue(200)
+                else:
+                    self._spin_pop.setValue(200)
+                    self._spin_generations.setValue(100)
+            except Exception:
+                pass
+
         if circuit_id and not trained:
             self._status_label.setStyleSheet(f"color: {YELLOW}; font-size: 12px;")
             self._status_label.setText(
@@ -324,8 +515,8 @@ class OptimizerView(QWidget):
 
     def _set_busy(self, busy: bool):
         self._combo_circuit.setEnabled(not busy)
-        self._spin_generations.setEnabled(not busy)
-        self._spin_pop.setEnabled(not busy)
+        self._combo_algo.setEnabled(not busy)
+        self._algo_settings_container.setEnabled(not busy)
         for sp in self._target_inputs.values():
             sp.setEnabled(not busy)
 
@@ -370,8 +561,11 @@ class OptimizerView(QWidget):
     def _reset_chart(self):
         self._history_x.clear()
         self._history_y.clear()
+        self._last_chart_draw = 0.0
         self._chart.clear()
-        self._chart.set_labels(xlabel="Generation", ylabel="Best Score")
+        algo = self._combo_algo.currentData() if hasattr(self, "_combo_algo") else "ga"
+        xlabel = "Generation" if algo == "ga" else "Iteration"
+        self._chart.set_labels(xlabel=xlabel, ylabel="Best Score")
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
@@ -391,11 +585,33 @@ class OptimizerView(QWidget):
         self._status_label.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px;")
         self._status_label.setText("Starting optimizer...")
 
+        algo = self._combo_algo.currentData() or "ga"
         self._worker = OptimizerWorker(
             circuit_id=circuit_id,
             targets=targets,
+            algorithm=algo,
+            # GA
             n_generations=self._spin_generations.value(),
             pop_size=self._spin_pop.value(),
+            mutation_prob=self._spin_mutation.value(),
+            crossover_prob=self._spin_crossover.value(),
+            elite_size=self._spin_elite.value(),
+            tournament_size=self._spin_tournament.value(),
+            # DE
+            de_maxiter=self._spin_de_maxiter.value(),
+            de_popsize=self._spin_de_popsize.value(),
+            de_mutation=self._spin_de_mutation.value(),
+            de_recombination=self._spin_de_recombination.value(),
+            # DA
+            da_maxiter=self._spin_da_maxiter.value(),
+            da_initial_temp=self._spin_da_initial_temp.value(),
+            # Bayesian
+            bo_n_trials=self._spin_bo_trials.value(),
+            bo_n_startup=self._spin_bo_startup.value(),
+            # Fitness
+            loss_type=self._combo_loss.currentData() or "mae",
+            direction_penalty=self._spin_dir_penalty.value(),
+            tolerance_pct=self._spin_tolerance.value(),
         )
         self._worker.generation.connect(self._on_generation)
         self._worker.status.connect(self._status_label.setText)
@@ -417,14 +633,20 @@ class OptimizerView(QWidget):
         self._status_label.setText("Cancelled.")
 
     def _on_generation(self, gen: int, best_score: float):
+        import time
         self._history_x.append(gen)
         self._history_y.append(best_score)
-        self._chart.plot_line(
-            self._history_x, self._history_y,
-            label="Best score", color=BLUE,
-            ymin=0,
-        )
-        self._chart.set_labels(xlabel="Generation", ylabel="Best Score")
+        # Throttle chart redraws to ~15 fps — avoids Qt signal queue backlog
+        # that causes the generation counter to jump (e.g. 1→5→12→...)
+        now = time.monotonic()
+        if now - self._last_chart_draw >= 0.067:   # ~15 fps cap
+            self._last_chart_draw = now
+            self._chart.plot_line(
+                self._history_x, self._history_y,
+                label="Best score", color=BLUE,
+                ymin=0,
+            )
+            self._chart.set_labels(xlabel="Generation", ylabel="Best Score")
 
     def _on_finished(self, result: dict):
         self._set_busy(False)
@@ -432,6 +654,13 @@ class OptimizerView(QWidget):
         self._status_label.setText(
             f"Done — best score: {result['best_score']:.4f}"
         )
+        # Final chart flush — ensures last generation always renders
+        if self._history_x:
+            self._chart.plot_line(
+                self._history_x, self._history_y,
+                label="Best score", color=BLUE, ymin=0,
+            )
+            self._chart.set_labels(xlabel="Generation", ylabel="Best Score")
         self._populate_results(result)
         circuit_id = self._combo_circuit.currentData()
         if circuit_id:

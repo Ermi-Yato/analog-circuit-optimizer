@@ -65,7 +65,8 @@
     "samples": 5000,
     "r2_scores": {
       "Peak_Gain_dB": 0.9865315026514145,
-      "Bandwidth_Hz": 0.9958026937395041
-    }
+      "Bandwidth_Hz": 0.9958026937395054
+    },
+    "model_type": "random_forest"
   }
 }

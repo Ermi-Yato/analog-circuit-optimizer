@@ -1,0 +1,76 @@
+{
+  "id": "stuff",
+  "name": "sas",
+  "description": "sas",
+  "spice_template": "circuits/differential_amplifier/differential_amplifier.template",
+  "simulation_type": "ac",
+  "parameters": [
+    {
+      "name": "R_L",
+      "label": "",
+      "unit": "Ω",
+      "min": 0.0,
+      "max": 100.0,
+      "default": 0.0,
+      "scale": "linear"
+    },
+    {
+      "name": "R_tail",
+      "label": "",
+      "unit": "Ω",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.0,
+      "scale": "linear"
+    },
+    {
+      "name": "R_E",
+      "label": "",
+      "unit": "Ω",
+      "min": 0.0,
+      "max": 1.0,
+      "default": 0.0,
+      "scale": "linear"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "Peak_Gain_dB",
+      "label": "Voltage Gain",
+      "unit": "dB",
+      "optimize": "maximize"
+    },
+    {
+      "name": "Phase_Margin_deg",
+      "label": "Phase Margin",
+      "unit": "deg",
+      "optimize": "maximize"
+    },
+    {
+      "name": "CMRR_dB",
+      "label": "CMRR",
+      "unit": "dB",
+      "optimize": "maximize"
+    },
+    {
+      "name": "Transimpedance_dBOhm",
+      "label": "Transimpedance",
+      "unit": "dBΩ",
+      "optimize": "maximize"
+    }
+  ],
+  "model": {
+    "surrogate_path": "trained_models/stuff/circuit_model.pkl",
+    "scaler_path": "trained_models/stuff/feature_scaler.pkl",
+    "trained_on": "2026-05-18",
+    "samples": 1000,
+    "r2_scores": {
+      "Peak_Gain_dB": 0.9826849746541075,
+      "Phase_Margin_deg": 0.7986973684210527,
+      "CMRR_dB": 0.9826849746541075,
+      "Transimpedance_dBOhm": 0.9826849746541075
+    },
+    "model_type": "random_forest",
+    "log_metrics": []
+  }
+}

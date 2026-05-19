@@ -22,6 +22,8 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont
 
 import registry.circuit_registry as reg
+from app.widgets.plot_widget import SchematicWidget
+from app.widgets.circuit_drawings import get_drawing
 
 
 _PROJECT_ROOT = os.path.dirname(
@@ -49,6 +51,14 @@ YELLOW   = "#d29922"   # warning
 
 _PARAM_COLS  = ["name", "label", "unit", "min", "max", "default", "scale"]
 _METRIC_COLS = ["name", "label", "unit", "optimize"]
+
+
+class _FlowLayout(QHBoxLayout):
+    """Simple horizontal wrapping layout for suggestion chips."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setContentsMargins(0, 4, 0, 4)
+        self.setSpacing(6)
 
 
 # ── Style helpers ─────────────────────────────────────────────────────────────
@@ -337,8 +347,10 @@ class _EditorPanel(QWidget):
         self._build_details_tab()
         self._build_params_tab()
         self._build_metrics_tab()
+        self._build_schematic_tab()
 
         self._current_id: str | None = None
+        self._is_new: bool = False
         self.setEnabled(False)
 
     # ── Tab builders ──────────────────────────────────────────────────────
@@ -404,8 +416,33 @@ class _EditorPanel(QWidget):
             else:
                 sim_form.addRow(ql, w)
         outer.addLayout(sim_form)
+        outer.addWidget(_divider())
+
+        # Dynamic template reference panel
+        outer.addWidget(_eyebrow("Template Reference"))
+        self._template_guide = QLabel("Define parameters and metrics first.")
+        self._template_guide.setStyleSheet(
+            f"color: {TEXT_SUB}; font-size: 11px; background: {BG2}; "
+            f"border: 1px solid {BORDER}; border-radius: 6px; padding: 12px 14px;"
+        )
+        self._template_guide.setWordWrap(True)
+        self._template_guide.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        outer.addWidget(self._template_guide)
+
+        validate_row = QHBoxLayout()
+        self._btn_validate = _btn_secondary("Validate Template")
+        self._btn_validate.clicked.connect(self._on_validate_template)
+        self._validate_result = QLabel("")
+        self._validate_result.setStyleSheet(f"font-size: 11px; color: {TEXT_SUB};")
+        validate_row.addWidget(self._btn_validate)
+        validate_row.addWidget(self._validate_result, stretch=1)
+        outer.addLayout(validate_row)
+
         outer.addStretch()
         self._tabs.addTab(tab, "Details")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
 
     def _build_params_tab(self):
         tab = QWidget()
@@ -416,6 +453,11 @@ class _EditorPanel(QWidget):
 
         layout.addWidget(_eyebrow("Component Parameters"))
         self._param_table = _ParamTable()
+        self._param_table.itemChanged.connect(self._refresh_placeholder_bar)
+        self._param_table.model().rowsInserted.connect(self._refresh_placeholder_bar)
+        self._param_table.model().rowsRemoved.connect(self._refresh_placeholder_bar)
+        self._param_table.model().rowsInserted.connect(self._refresh_param_suggestions)
+        self._param_table.model().rowsRemoved.connect(self._refresh_param_suggestions)
         layout.addWidget(self._param_table, stretch=1)
 
         bar = QHBoxLayout()
@@ -428,9 +470,150 @@ class _EditorPanel(QWidget):
         bar.addWidget(b_del)
         bar.addStretch()
         layout.addLayout(bar)
+
+        self._placeholder_bar = QLabel("Placeholders will appear here as you add parameters.")
+        self._placeholder_bar.setStyleSheet(
+            f"color: {TEXT_SUB}; font-size: 11px; background: {BG2}; "
+            f"border: 1px solid {BORDER}; border-radius: 5px; padding: 7px 12px;"
+        )
+        self._placeholder_bar.setWordWrap(True)
+        self._placeholder_bar.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(self._placeholder_bar)
+
+        # Parameter suggestions from template
+        layout.addWidget(_divider())
+        layout.addWidget(_eyebrow("Suggestions from template  (click to add)"))
+        self._param_suggestion_wrap = QWidget()
+        self._param_suggestion_wrap.setStyleSheet("background: transparent;")
+        self._param_suggestion_layout = _FlowLayout(self._param_suggestion_wrap)
+        layout.addWidget(self._param_suggestion_wrap)
+
+        # Wire template field changes to refresh suggestions
+        self._field_tmpl.textChanged.connect(self._refresh_param_suggestions)
+
         self._tabs.addTab(tab, "Parameters")
 
+    def _refresh_placeholder_bar(self, *_args):
+        params = self._param_table.to_list()
+        names  = [p["name"].strip() for p in params if p.get("name", "").strip()]
+        if not names:
+            self._placeholder_bar.setText(
+                "Placeholders will appear here as you add parameters."
+            )
+            return
+        placeholders = ["{" + n.replace("_", "").upper() + "_VAL}" for n in names]
+        pairs = "     ".join(
+            f"{n}  ->  {ph}" for n, ph in zip(names, placeholders)
+        )
+        self._placeholder_bar.setText(f"Placeholders:   {pairs}")
+
+    def _refresh_param_suggestions(self, *_args):
+        import re
+        # Clear existing chips
+        while self._param_suggestion_layout.count():
+            item = self._param_suggestion_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        tmpl_rel = self._field_tmpl.text().strip()
+        if not tmpl_rel:
+            self._param_suggestion_layout.addStretch()
+            return
+
+        tmpl_path = os.path.join(_PROJECT_ROOT, tmpl_rel)
+        if not os.path.isfile(tmpl_path):
+            self._param_suggestion_layout.addStretch()
+            return
+
+        try:
+            with open(tmpl_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            self._param_suggestion_layout.addStretch()
+            return
+
+        # Extract placeholder names: {SOMENAME_VAL} -> "SOMENAME"
+        found = re.findall(r'\{([A-Z0-9]+)_VAL\}', content)
+        if not found:
+            self._param_suggestion_layout.addStretch()
+            return
+
+        # Build set of already-defined param names (normalised: strip _ uppercase)
+        existing_params = self._param_table.to_list()
+        existing_keys = {
+            p.get("name", "").replace("_", "").upper().strip()
+            for p in existing_params
+        }
+
+        seen = set()
+        for placeholder_name in found:
+            if placeholder_name in seen:
+                continue
+            seen.add(placeholder_name)
+            if placeholder_name in existing_keys:
+                continue
+            chip = QPushButton(f"+ {placeholder_name}")
+            chip.setFixedHeight(26)
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
+            chip.setStyleSheet(
+                f"QPushButton {{ background: {BG2}; color: {TEXT_SUB}; "
+                f"border: 1px solid {BORDER}; border-radius: 5px; "
+                f"font-size: 10px; padding: 0 10px; }}"
+                f"QPushButton:hover {{ color: {TEXT}; border-color: {BLUE}; background: {BG1}; }}"
+            )
+            chip.clicked.connect(lambda _=False, n=placeholder_name: self._add_preset_param(n))
+            self._param_suggestion_layout.addWidget(chip)
+
+        self._param_suggestion_layout.addStretch()
+
+    def _add_preset_param(self, placeholder_name: str):
+        """Add a param row pre-filled from a template placeholder chip."""
+        # Don't add if already in table (normalised comparison)
+        existing = {
+            p.get("name", "").replace("_", "").upper().strip()
+            for p in self._param_table.to_list()
+        }
+        if placeholder_name in existing:
+            return
+        preset = {
+            "name": placeholder_name,
+            "label": placeholder_name.replace("_", " ").title(),
+            "unit": "",
+            "min": "0",
+            "max": "1",
+            "default": "0",
+            "scale": "linear",
+        }
+        self._param_table._append(preset)
+        self._refresh_param_suggestions()
+
     def _build_metrics_tab(self):
+        _PRESETS = {
+            "ac": [
+                {"name": "Peak_Gain_dB",      "label": "Voltage Gain",    "unit": "dB",  "optimize": "maximize"},
+                {"name": "Bandwidth_Hz",       "label": "Bandwidth",       "unit": "Hz",  "optimize": "maximize"},
+                {"name": "Phase_Margin_deg",   "label": "Phase Margin",    "unit": "deg", "optimize": "maximize"},
+                {"name": "Cutoff_Freq_Hz",     "label": "Cutoff Frequency","unit": "Hz",  "optimize": "maximize"},
+                {"name": "Q_factor",           "label": "Q Factor",        "unit": "",    "optimize": "maximize"},
+                {"name": "CMRR_dB",            "label": "CMRR",            "unit": "dB",  "optimize": "maximize"},
+                {"name": "Transimpedance_dBOhm","label": "Transimpedance", "unit": "dBΩ", "optimize": "maximize"},
+            ],
+            "transient": [
+                {"name": "Output_Swing_V",     "label": "Output Swing",    "unit": "V",   "optimize": "maximize"},
+                {"name": "THD_percent",        "label": "Total Harmonic Distortion", "unit": "%", "optimize": "minimize"},
+                {"name": "Efficiency_percent", "label": "Efficiency",      "unit": "%",   "optimize": "maximize"},
+                {"name": "Rise_Time_s",        "label": "Rise Time",       "unit": "s",   "optimize": "minimize"},
+                {"name": "Settling_Time_s",    "label": "Settling Time",   "unit": "s",   "optimize": "minimize"},
+            ],
+            "dc": [
+                {"name": "Operating_Point_V",  "label": "Operating Point", "unit": "V",   "optimize": "maximize"},
+                {"name": "Current_Draw_A",     "label": "Quiescent Current","unit": "A",  "optimize": "minimize"},
+            ],
+        }
+
         tab = QWidget()
         tab.setStyleSheet(f"background: {BG0};")
         layout = QVBoxLayout(tab)
@@ -451,20 +634,138 @@ class _EditorPanel(QWidget):
         bar.addWidget(b_del)
         bar.addStretch()
         layout.addLayout(bar)
+
+        # Suggestions
+        layout.addWidget(_divider())
+        layout.addWidget(_eyebrow("Suggestions  (click to add)"))
+        self._suggestion_wrap = QWidget()
+        self._suggestion_wrap.setStyleSheet("background: transparent;")
+        self._suggestion_layout = _FlowLayout(self._suggestion_wrap)
+        layout.addWidget(self._suggestion_wrap)
+
+        self._metric_presets = _PRESETS
+        self._combo_simtype.currentTextChanged.connect(self._refresh_metric_suggestions)
+
         self._tabs.addTab(tab, "Metrics")
+
+    def _build_schematic_tab(self):
+        tab = QWidget()
+        tab.setStyleSheet(f"background: {BG0};")
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+
+        hdr = QHBoxLayout()
+        hdr.addWidget(_eyebrow("Circuit Schematic"))
+        hdr.addStretch()
+        self._btn_import_schematic = _btn_secondary("Import Image")
+        self._btn_import_schematic.clicked.connect(self._on_import_schematic)
+        self._btn_clear_schematic = _btn_secondary("Clear")
+        self._btn_clear_schematic.clicked.connect(self._on_clear_schematic)
+        hdr.addWidget(self._btn_import_schematic)
+        hdr.addWidget(self._btn_clear_schematic)
+        layout.addLayout(hdr)
+
+        # Schemdraw canvas (built-in circuits)
+        self._schematic_plot = SchematicWidget()
+        layout.addWidget(self._schematic_plot, stretch=1)
+
+        # Image label (user-imported)
+        self._schematic_image_lbl = QLabel()
+        self._schematic_image_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._schematic_image_lbl.setStyleSheet(f"background: {BG1}; border-radius: 6px;")
+        layout.addWidget(self._schematic_image_lbl, stretch=1)
+
+        # Placeholder
+        self._schematic_placeholder = QLabel(
+            "No schematic available.\nImport a PNG / JPG / SVG image using the button above."
+        )
+        self._schematic_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._schematic_placeholder.setStyleSheet(f"color: {TEXT_DIM}; font-size: 13px;")
+        layout.addWidget(self._schematic_placeholder)
+
+        self._schematic_image_path: str | None = None
+        self._tabs.addTab(tab, "Schematic")
 
     # ── Data load / clear ─────────────────────────────────────────────────
 
-    def load_circuit(self, circuit: dict):
+    def load_circuit(self, circuit: dict, is_new: bool = False):
         self._current_id = circuit["id"]
+        self._is_new = is_new
         self.setEnabled(True)
         self._field_id.setText(circuit["id"])
+        self._field_id.setReadOnly(not is_new)
+        self._field_id.setStyleSheet(
+            _INPUT_SS if is_new
+            else _INPUT_SS + f"QLineEdit {{ color: {TEXT_DIM}; }}"
+        )
+        self._field_id.setPlaceholderText("e.g. my_filter (no spaces)" if is_new else "")
         self._field_name.setText(circuit.get("name", ""))
         self._field_desc.setText(circuit.get("description", ""))
         self._field_tmpl.setText(circuit.get("spice_template", ""))
         self._combo_simtype.setCurrentText(circuit.get("simulation_type", "ac"))
         self._param_table.load(circuit.get("parameters", []))
         self._metric_table.load(circuit.get("metrics", []))
+        img_rel = circuit.get("schematic_image", "")
+        self._schematic_image_path = (
+            os.path.join(_PROJECT_ROOT, img_rel) if img_rel else None
+        )
+        self._refresh_schematic(circuit["id"])
+        self._update_template_guide()
+        self._refresh_placeholder_bar()
+        self._refresh_param_suggestions()
+        self._refresh_metric_suggestions()
+
+    def _refresh_schematic(self, circuit_id: str):
+        # Priority: built-in schemdraw > user image > placeholder
+        fig = get_drawing(circuit_id)
+        if fig is not None:
+            self._schematic_plot.set_figure(fig)
+            self._schematic_plot.show()
+            self._schematic_image_lbl.hide()
+            self._schematic_placeholder.hide()
+            return
+
+        if self._schematic_image_path:
+            self._show_image(self._schematic_image_path)
+            return
+
+        self._schematic_plot.hide()
+        self._schematic_image_lbl.hide()
+        self._schematic_placeholder.show()
+
+    def _show_image(self, path: str):
+        from PySide6.QtGui import QPixmap
+        pix = QPixmap(path)
+        if pix.isNull():
+            self._schematic_plot.hide()
+            self._schematic_image_lbl.hide()
+            self._schematic_placeholder.setText(f"Could not load image:\n{path}")
+            self._schematic_placeholder.show()
+            return
+        self._schematic_image_lbl.setPixmap(
+            pix.scaled(self._schematic_image_lbl.size(),
+                       Qt.AspectRatioMode.KeepAspectRatio,
+                       Qt.TransformationMode.SmoothTransformation)
+        )
+        self._schematic_plot.hide()
+        self._schematic_image_lbl.show()
+        self._schematic_placeholder.hide()
+
+    def _on_import_schematic(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Schematic Image", _PROJECT_ROOT,
+            "Images (*.png *.jpg *.jpeg *.svg *.bmp);;All files (*)"
+        )
+        if not path:
+            return
+        self._schematic_image_path = path
+        self._show_image(path)
+
+    def _on_clear_schematic(self):
+        self._schematic_image_path = None
+        circuit_id = self._current_id or ""
+        self._refresh_schematic(circuit_id)
 
     def clear(self):
         self._current_id = None
@@ -473,8 +774,144 @@ class _EditorPanel(QWidget):
             w.clear()
         self._param_table.setRowCount(0)
         self._metric_table.setRowCount(0)
+        self._schematic_image_path = None
+        self._schematic_plot.hide()
+        self._schematic_image_lbl.hide()
+        self._schematic_placeholder.show()
 
     # ── Actions ───────────────────────────────────────────────────────────
+
+    def _refresh_metric_suggestions(self, sim_type: str = ""):
+        sim = sim_type or self._combo_simtype.currentText()
+        presets = self._metric_presets.get(sim, [])
+
+        # Clear existing chips
+        while self._suggestion_layout.count():
+            item = self._suggestion_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        existing_names = {
+            m.get("name", "").strip()
+            for m in self._metric_table.to_list()
+        }
+
+        for preset in presets:
+            name = preset["name"]
+            if name in existing_names:
+                continue
+            chip = QPushButton(f"+ {name}")
+            chip.setFixedHeight(26)
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
+            chip.setStyleSheet(
+                f"QPushButton {{ background: {BG2}; color: {TEXT_SUB}; "
+                f"border: 1px solid {BORDER}; border-radius: 5px; "
+                f"font-size: 10px; padding: 0 10px; }}"
+                f"QPushButton:hover {{ color: {TEXT}; border-color: {BLUE}; background: {BG1}; }}"
+            )
+            chip.clicked.connect(lambda _=False, p=preset: self._add_preset_metric(p))
+            self._suggestion_layout.addWidget(chip)
+
+        self._suggestion_layout.addStretch()
+
+    def _add_preset_metric(self, preset: dict):
+        # Don't add duplicates
+        existing = {m.get("name", "").strip() for m in self._metric_table.to_list()}
+        if preset["name"] in existing:
+            return
+        self._metric_table._append(preset)
+        # Remove the chip for this metric
+        self._refresh_metric_suggestions()
+
+    def _on_tab_changed(self, index: int):
+        if index == 0:   # Details tab
+            self._update_template_guide()
+
+    def _update_template_guide(self):
+        params  = self._param_table.to_list()
+        metrics = self._metric_table.to_list()
+        sim     = self._combo_simtype.currentText()
+
+        lines = []
+
+        # Parameter placeholders
+        if params:
+            lines.append("PARAMETER PLACEHOLDERS  (use these in your netlist)")
+            for p in params:
+                name = p.get("name", "").strip()
+                if not name:
+                    continue
+                placeholder = "{" + name.replace("_", "").upper() + "_VAL}"
+                lines.append(f"  {name:<18} ->  {placeholder}")
+        else:
+            lines.append("No parameters defined yet.")
+
+        lines.append("")
+
+        # Required wrdata line
+        if sim == "ac":
+            lines.append("REQUIRED IN .control BLOCK")
+            lines.append("  wrdata ngspice_simulation_output.txt frequency v(<out_node>)")
+            lines.append("  (replace <out_node> with your output node name)")
+        elif sim == "transient":
+            lines.append("REQUIRED IN .control BLOCK")
+            lines.append("  wrdata ngspice_simulation_output.txt time v(<out_node>)")
+            lines.append("  (replace <out_node> with your output node name)")
+
+        lines.append("")
+
+        # Defined metrics
+        if metrics:
+            lines.append("DEFINED OUTPUT METRICS")
+            for m in metrics:
+                name = m.get("name", "").strip()
+                opt  = m.get("optimize", "maximize")
+                unit = m.get("unit", "")
+                if name:
+                    lines.append(f"  {name}  [{unit}]  ({opt})")
+        else:
+            lines.append("No metrics defined yet.")
+
+        self._template_guide.setText("\n".join(lines))
+
+    def _on_validate_template(self):
+        tmpl_rel = self._field_tmpl.text().strip()
+        if not tmpl_rel:
+            self._validate_result.setStyleSheet(f"font-size: 11px; color: {YELLOW};")
+            self._validate_result.setText("No template path set.")
+            return
+
+        tmpl_path = os.path.join(_PROJECT_ROOT, tmpl_rel)
+        if not os.path.isfile(tmpl_path):
+            self._validate_result.setStyleSheet(f"font-size: 11px; color: {RED};")
+            self._validate_result.setText(f"File not found: {tmpl_rel}")
+            return
+
+        with open(tmpl_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        params = self._param_table.to_list()
+        if not params:
+            self._validate_result.setStyleSheet(f"font-size: 11px; color: {YELLOW};")
+            self._validate_result.setText("No parameters defined yet.")
+            return
+
+        missing = []
+        for p in params:
+            name = p.get("name", "").strip()
+            if not name:
+                continue
+            placeholder = "{" + name.replace("_", "").upper() + "_VAL}"
+            if placeholder not in content:
+                missing.append(placeholder)
+
+        if missing:
+            self._validate_result.setStyleSheet(f"font-size: 11px; color: {RED};")
+            self._validate_result.setText("Missing: " + "  ".join(missing))
+        else:
+            self._validate_result.setStyleSheet(f"font-size: 11px; color: {GREEN};")
+            self._validate_result.setText("All placeholders found.")
 
     def _browse_template(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -487,26 +924,73 @@ class _EditorPanel(QWidget):
             )
 
     def _on_save(self):
-        if not self._current_id:
+        # Collect and validate all fields before touching the registry
+        errors = []
+
+        # ID
+        if self._is_new:
+            circuit_id = self._field_id.text().strip()
+            if not circuit_id:
+                errors.append("Circuit ID is required.")
+            elif " " in circuit_id:
+                errors.append("Circuit ID must not contain spaces.")
+        else:
+            circuit_id = self._current_id
+            if not circuit_id:
+                return   # editor not loaded
+
+        name = self._field_name.text().strip()
+        if not name:
+            errors.append("Name is required.")
+
+        tmpl = self._field_tmpl.text().strip()
+        if not tmpl:
+            errors.append("SPICE template path is required.")
+        elif not os.path.isfile(os.path.join(_PROJECT_ROOT, tmpl)):
+            errors.append(f"Template file not found: {tmpl}")
+
+        params = self._param_table.to_list()
+        if not params or all(not p.get("name", "").strip() for p in params):
+            errors.append("At least one parameter is required.")
+
+        metrics = self._metric_table.to_list()
+        if not metrics or all(not m.get("name", "").strip() for m in metrics):
+            errors.append("At least one metric is required.")
+
+        if errors:
+            QMessageBox.warning(
+                self, "Cannot Save",
+                "Please fix the following before saving:\n\n" +
+                "\n".join(f"  • {e}" for e in errors)
+            )
             return
+
+        self._current_id = circuit_id
         circuit = {
-            "id":              self._current_id,
-            "name":            self._field_name.text().strip(),
+            "id":              circuit_id,
+            "name":            name,
             "description":     self._field_desc.text().strip(),
-            "spice_template":  self._field_tmpl.text().strip(),
+            "spice_template":  tmpl,
             "simulation_type": self._combo_simtype.currentText(),
-            "parameters":      self._param_table.to_list(),
-            "metrics":         self._metric_table.to_list(),
+            "parameters":      params,
+            "metrics":         metrics,
         }
+        if self._schematic_image_path:
+            circuit["schematic_image"] = os.path.relpath(
+                self._schematic_image_path, _PROJECT_ROOT
+            ).replace("\\", "/")
         try:
-            existing = reg.get(self._current_id)
+            existing = reg.get(circuit_id)
             if "model" in existing:
                 circuit["model"] = existing["model"]
         except KeyError:
             pass
         try:
             reg.register(circuit)
-            QMessageBox.information(self, "Saved", f"'{circuit['name']}' saved.")
+            self._is_new = False
+            self._field_id.setReadOnly(True)
+            self._field_id.setStyleSheet(_INPUT_SS + f"QLineEdit {{ color: {TEXT_DIM}; }}")
+            QMessageBox.information(self, "Saved", f"'{name}' saved.")
             self._notify_refresh()
         except ValueError as exc:
             QMessageBox.critical(self, "Validation Error", str(exc))
@@ -654,9 +1138,10 @@ class CircuitManagerView(QWidget):
 
     def _on_new(self):
         blank = {
-            "id": "new_circuit", "name": "New Circuit", "description": "",
-            "spice_template": "circuits/new_circuit/new_circuit.template",
+            "id": "", "name": "", "description": "",
+            "spice_template": "",
             "simulation_type": "ac", "parameters": [], "metrics": [],
         }
         self._list.clearSelection()
-        self._editor.load_circuit(blank)
+        self._editor.load_circuit(blank, is_new=True)
+        self._editor._field_id.setFocus()

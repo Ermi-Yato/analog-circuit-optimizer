@@ -38,7 +38,8 @@
       "name": "Diff_Gain_dB",
       "label": "Differential Gain",
       "unit": "dB",
-      "optimize": "maximize"
+      "optimize": "maximize",
+      "target_default": 20.0
     }
   ],
   "model": {
@@ -47,7 +48,9 @@
     "trained_on": "2026-05-18",
     "samples": 5000,
     "r2_scores": {
-      "Diff_Gain_dB": 0.9977013252036465
-    }
+      "Diff_Gain_dB": 0.9998467231283943
+    },
+    "model_type": "mlp",
+    "log_metrics": []
   }
 }
