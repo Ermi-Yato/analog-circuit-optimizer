@@ -123,16 +123,16 @@
   ],
   "validity_checks": {
     "saturation": {
-      "condition": "Peak_Gain_dB < 5.0",
-      "description": "Very low gain indicates transistor in saturation (V_CE < V_CE_sat)"
+      "condition": "Peak_Gain_dB < 10.0",
+      "description": "Low gain indicates transistor near saturation"
     },
     "cutoff": {
       "condition": "Peak_Gain_dB < 0.0",
-      "description": "Negative gain (in dB) indicates transistor cutoff or measurement error"
+      "description": "Negative gain indicates transistor cutoff or measurement error"
     },
-    "bandwidth_saturation": {
-      "condition": "Bandwidth_Hz > 0.9 * f_sweep_max",
-      "description": "Bandwidth equals sweep range indicates no high-frequency rolloff (invalid model)"
+    "bandwidth_too_high": {
+      "condition": "Bandwidth_Hz > 90000000.0",
+      "description": "Bandwidth near sweep limit indicates no HF rolloff (invalid)"
     }
   }
 }

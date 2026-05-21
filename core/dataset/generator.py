@@ -356,6 +356,113 @@ def _extract_metrics(
 
 
 # ---------------------------------------------------------------------------
+# Validity checking
+# ---------------------------------------------------------------------------
+
+def _check_metric_ranges(metrics: dict, metric_defs: list[dict]) -> str | None:
+    """
+    Check if all metrics are within their valid_range bounds.
+    Returns None if valid, or a reason string if invalid.
+    """
+    for m_def in metric_defs:
+        name = m_def["name"]
+        if name not in metrics:
+            continue
+        value = metrics[name]
+        valid_range = m_def.get("valid_range")
+        if valid_range is None:
+            continue
+        
+        min_val = valid_range.get("min")
+        max_val = valid_range.get("max")
+        
+        if min_val is not None and value < min_val:
+            return f"{name}={value:.4g} below valid min {min_val}"
+        if max_val is not None and value > max_val:
+            return f"{name}={value:.4g} above valid max {max_val}"
+    
+    return None
+
+
+def _check_validity_rules(metrics: dict, validity_checks: dict | None) -> str | None:
+    """
+    Check metrics against validity_checks rules from registry.
+    Each rule has a 'condition' that when True indicates INVALID data.
+    
+    Supports simple comparisons like:
+      - "Peak_Gain_dB < 5.0"
+      - "Q_factor > 10.0"
+      - "Phase_Margin_deg < 30.0"
+      - "Output_Swing_V < 2.0 AND THD_percent > 40.0"
+    
+    Returns None if valid, or the check name + description if invalid.
+    """
+    if not validity_checks:
+        return None
+    
+    for check_name, check_def in validity_checks.items():
+        condition = check_def.get("condition", "")
+        description = check_def.get("description", check_name)
+        
+        try:
+            # Parse and evaluate the condition
+            if _evaluate_condition(condition, metrics):
+                return f"{check_name}: {description}"
+        except Exception:
+            # If condition can't be evaluated, skip it
+            continue
+    
+    return None
+
+
+def _evaluate_condition(condition: str, metrics: dict) -> bool:
+    """
+    Evaluate a simple condition string against metric values.
+    Supports: <, >, <=, >=, ==, AND, OR
+    Returns True if the condition matches (i.e., data is INVALID).
+    """
+    if not condition.strip():
+        return False
+    
+    # Handle AND/OR
+    if " AND " in condition:
+        parts = condition.split(" AND ")
+        return all(_evaluate_condition(p.strip(), metrics) for p in parts)
+    if " OR " in condition:
+        parts = condition.split(" OR ")
+        return any(_evaluate_condition(p.strip(), metrics) for p in parts)
+    
+    # Parse comparison: "metric_name op value"
+    import re
+    match = re.match(r'(\w+)\s*([<>=!]+)\s*([\d.eE+-]+)', condition.strip())
+    if not match:
+        return False
+    
+    metric_name, op, value_str = match.groups()
+    
+    if metric_name not in metrics:
+        return False
+    
+    metric_val = metrics[metric_name]
+    threshold = float(value_str)
+    
+    if op == "<":
+        return metric_val < threshold
+    elif op == ">":
+        return metric_val > threshold
+    elif op == "<=":
+        return metric_val <= threshold
+    elif op == ">=":
+        return metric_val >= threshold
+    elif op == "==" or op == "=":
+        return abs(metric_val - threshold) < 1e-9
+    elif op == "!=" or op == "<>":
+        return abs(metric_val - threshold) >= 1e-9
+    
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -366,6 +473,7 @@ def generate(
     max_workers: int | None = None,
     seed: int | None = None,
     verbose: bool = True,
+    filter_invalid: bool = True,
 ) -> pd.DataFrame:
     """
     Generate a simulation dataset for a circuit.
@@ -378,10 +486,12 @@ def generate(
         max_workers:       Parallel worker count (default: ThreadPoolExecutor default).
         seed:              Random seed for reproducibility.
         verbose:           Print progress summary and dataset stats when done.
+        filter_invalid:    If True, filter out rows that fail validity checks
+                           defined in the circuit registry (saturation, clipping, etc.)
 
     Returns:
         DataFrame with columns [param1, param2, ..., metric1, metric2, ...]
-        Rows with failed simulations are dropped.
+        Rows with failed simulations or invalid metrics are dropped.
         Also saved to data/<circuit_id>_dataset.csv.
     """
     circuit      = reg.get(circuit_id)
@@ -390,6 +500,9 @@ def generate(
     metric_names = [m["name"] for m in metric_defs]
     param_names  = [p["name"] for p in param_defs]
     sim_type     = circuit.get("simulation_type", "ac")
+    
+    # Get validity checking configuration from registry
+    validity_checks = circuit.get("validity_checks")
 
     # Read SPICE template
     template_path = os.path.join(_PROJECT_ROOT, circuit["spice_template"])
@@ -406,6 +519,7 @@ def generate(
         print(f"  Metrics    : {metric_names}")
         print(f"  Samples    : {n_samples}")
         print(f"  Workers    : {max_workers or 'auto'}")
+        print(f"  Validity   : {'enabled' if filter_invalid else 'disabled'}")
         print()
 
     # Run simulations in parallel
@@ -434,7 +548,11 @@ def generate(
     rows = []
     failed_sim = 0
     failed_nan = 0
+    failed_validity = 0
+    failed_range = 0
     failed_extract: dict[str, int] = {}
+    validity_reasons: dict[str, int] = {}
+    
     for params, raw in zip(param_sets, raw_results):
         if raw is None:
             failed_sim += 1
@@ -448,11 +566,28 @@ def generate(
         if any(math.isnan(v) for v in metrics.values() if isinstance(v, float)):
             failed_nan += 1
             continue
+        
+        # Validity filtering (if enabled)
+        if filter_invalid:
+            # Check metric valid_range bounds
+            range_reason = _check_metric_ranges(metrics, metric_defs)
+            if range_reason:
+                failed_range += 1
+                validity_reasons[range_reason] = validity_reasons.get(range_reason, 0) + 1
+                continue
+            
+            # Check validity rules (saturation, clipping, instability, etc.)
+            validity_reason = _check_validity_rules(metrics, validity_checks)
+            if validity_reason:
+                failed_validity += 1
+                validity_reasons[validity_reason] = validity_reasons.get(validity_reason, 0) + 1
+                continue
+        
         row = {name: params[name] for name in param_names}
         row.update(metrics)
         rows.append(row)
 
-    failed = failed_sim + failed_nan + sum(failed_extract.values())
+    failed = failed_sim + failed_nan + failed_validity + failed_range + sum(failed_extract.values())
 
     df = pd.DataFrame(rows, columns=param_names + metric_names)
 
@@ -467,10 +602,18 @@ def generate(
         if failed_sim:
             print(f"  Sim errors : {failed_sim} (ngspice returned no output)")
         if failed_nan:
-            print(f"  NaN rows   : {failed_nan} (metric returned NaN, row dropped)")
+            print(f"  NaN rows   : {failed_nan} (metric returned NaN)")
+        if failed_range:
+            print(f"  Out of range: {failed_range} (metric outside valid_range)")
+        if failed_validity:
+            print(f"  Invalid    : {failed_validity} (failed validity_checks)")
         for reason, count in failed_extract.items():
             print(f"  Extract err: {count}x — {reason}")
-        print(f"  Saved to   : {out_path}")
+        if validity_reasons and verbose:
+            print(f"\n  Validity rejection breakdown:")
+            for reason, count in sorted(validity_reasons.items(), key=lambda x: -x[1])[:5]:
+                print(f"    {count}x — {reason}")
+        print(f"\n  Saved to   : {out_path}")
         print()
         if len(df) > 0:
             print(preview(df))

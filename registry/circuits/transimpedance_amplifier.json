@@ -109,12 +109,12 @@
       "description": "Phase margin below 30° indicates potential instability or ringing"
     },
     "overcompensated": {
-      "condition": "Phase_Margin_deg > 80.0",
+      "condition": "Phase_Margin_deg > 85.0",
       "description": "Excessive phase margin suggests over-compensation, wasting bandwidth"
     },
-    "bandwidth_anomaly": {
-      "condition": "Bandwidth_Hz > 0.5 * GBW",
-      "description": "Bandwidth exceeding half of GBW is physically unrealistic"
+    "bandwidth_too_high": {
+      "condition": "Bandwidth_Hz > 500000000.0",
+      "description": "Bandwidth exceeding 500MHz (half of GBW) is physically unrealistic"
     }
   }
 }

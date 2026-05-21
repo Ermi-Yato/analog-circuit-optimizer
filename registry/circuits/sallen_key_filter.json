@@ -118,17 +118,21 @@
     }
   ],
   "validity_checks": {
-    "overdamped": {
-      "condition": "Q_factor < 0.1",
-      "description": "Severely overdamped - response may be too sluggish"
+    "severely_overdamped": {
+      "condition": "Q_factor < 0.05",
+      "description": "Severely overdamped - response is too sluggish for practical use"
     },
-    "underdamped": {
-      "condition": "Q_factor > 5.0",
-      "description": "Highly underdamped - excessive peaking near cutoff"
+    "highly_underdamped": {
+      "condition": "Q_factor > 10.0",
+      "description": "Highly underdamped - excessive peaking and ringing near cutoff"
     },
-    "frequency_out_of_range": {
-      "condition": "Cutoff_Freq_Hz < 1.0 OR Cutoff_Freq_Hz > 1e7",
-      "description": "Cutoff frequency outside simulation range"
+    "frequency_too_low": {
+      "condition": "Cutoff_Freq_Hz < 1.0",
+      "description": "Cutoff frequency below 1Hz is impractical"
+    },
+    "frequency_too_high": {
+      "condition": "Cutoff_Freq_Hz > 10000000.0",
+      "description": "Cutoff frequency above 10MHz exceeds simulation range"
     }
   }
 }
