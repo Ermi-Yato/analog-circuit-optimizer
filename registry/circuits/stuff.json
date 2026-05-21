@@ -1,35 +1,44 @@
 {
   "id": "stuff",
-  "name": "sas",
-  "description": "sas",
-  "spice_template": "circuits/differential_amplifier/differential_amplifier.template",
+  "name": "sas updated cea",
+  "description": "test updated common emitter amplifier",
+  "spice_template": "circuits/common_emitter_amplifier/common_emitter_amplifier.template",
   "simulation_type": "ac",
   "parameters": [
     {
-      "name": "R_L",
-      "label": "",
+      "name": "R1",
+      "label": "R1 value",
       "unit": "Ω",
-      "min": 0.0,
-      "max": 100.0,
-      "default": 0.0,
+      "min": 50000.0,
+      "max": 150000.0,
+      "default": 100000.0,
       "scale": "linear"
     },
     {
-      "name": "R_tail",
-      "label": "",
+      "name": "R2",
+      "label": "R2 value",
       "unit": "Ω",
-      "min": 0.0,
-      "max": 1.0,
-      "default": 0.0,
+      "min": 10000.0,
+      "max": 30000.0,
+      "default": 20000.0,
       "scale": "linear"
     },
     {
-      "name": "R_E",
-      "label": "",
+      "name": "RC",
+      "label": "Rc value",
       "unit": "Ω",
-      "min": 0.0,
-      "max": 1.0,
-      "default": 0.0,
+      "min": 1000.0,
+      "max": 5000.0,
+      "default": 3000.0,
+      "scale": "linear"
+    },
+    {
+      "name": "RE",
+      "label": "Re value",
+      "unit": "Ω",
+      "min": 100.0,
+      "max": 1000.0,
+      "default": 470.0,
       "scale": "linear"
     }
   ],
@@ -41,34 +50,20 @@
       "optimize": "maximize"
     },
     {
-      "name": "Phase_Margin_deg",
-      "label": "Phase Margin",
-      "unit": "deg",
-      "optimize": "maximize"
-    },
-    {
-      "name": "CMRR_dB",
-      "label": "CMRR",
-      "unit": "dB",
-      "optimize": "maximize"
-    },
-    {
-      "name": "Transimpedance_dBOhm",
-      "label": "Transimpedance",
-      "unit": "dBΩ",
+      "name": "Bandwidth_Hz",
+      "label": "3dB Bandwidth",
+      "unit": "Hz",
       "optimize": "maximize"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/stuff/circuit_model.pkl",
     "scaler_path": "trained_models/stuff/feature_scaler.pkl",
-    "trained_on": "2026-05-18",
+    "trained_on": "2026-05-21",
     "samples": 1000,
     "r2_scores": {
-      "Peak_Gain_dB": 0.9826849746541075,
-      "Phase_Margin_deg": 0.7986973684210527,
-      "CMRR_dB": 0.9826849746541075,
-      "Transimpedance_dBOhm": 0.9826849746541075
+      "Peak_Gain_dB": 0.9647952510983618,
+      "Bandwidth_Hz": 0.9859986705806133
     },
     "model_type": "random_forest",
     "log_metrics": []

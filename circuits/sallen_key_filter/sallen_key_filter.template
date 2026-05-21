@@ -1,22 +1,52 @@
-* Sallen-Key 2nd Order Active Low-Pass Filter (Unity-Gain)
-* Topology: Vin -> R1 -> A -> R2 -> B(+opamp input)
-*           C1: A -> Vout (feedback)
-*           C2: B -> GND
+* Sallen-Key 2nd Order Active Low-Pass Filter (Unity-Gain Configuration)
+*
+* Topology (unity-gain voltage follower):
+*   Vin ─── R1 ─── nodeA ─── R2 ─── nodeB ─── (+) op-amp ─── out
+*                    │                │                        │
+*                    C1 ─────────────────────────────────────────┘ (feedback)
+*                                     │
+*                                    C2
+*                                     │
+*                                    GND
+*   Op-amp (-) tied to output for unity gain buffer
+*
+* Transfer function:
+*   H(s) = ω0² / (s² + s·ω0/Q + ω0²)
+*   
+*   For unity-gain Sallen-Key:
+*     ω0 = 1 / √(R1·R2·C1·C2)
+*     Q  = √(R1·R2·C1·C2) / (C2·(R1 + R2))
+*
+* Design space:
+*   - R1, R2: 1kΩ to 100kΩ (log scale)
+*   - C1, C2: 100pF to 1µF (log scale)
+*   - Cutoff frequency range: ~1 Hz to ~1.6 MHz
+*   - Q range: depends on R1/R2 and C1/C2 ratios
 
-Vin in 0 AC 1
+******** INPUT SOURCE ********
+Vin in 0 DC 0 AC 1
 
-R1 in nodeA {R1_VAL}
+******** FILTER NETWORK ********
+R1 in    nodeA {R1_VAL}
 R2 nodeA nodeB {R2_VAL}
-C1 nodeA out {C1_VAL}
-C2 nodeB 0 {C2_VAL}
+C1 nodeA out   {C1_VAL}
+C2 nodeB 0     {C2_VAL}
 
-* Ideal unity-gain opamp: high-gain VCVS + feedback resistor
-* Rfb closes the loop: output -> inverting node -> opamp sees (nodeB - out_fb)
-Eopamp out 0 nodeB out_fb 1e6
-Rfb out_fb out 1
+******** OP-AMP (Unity-Gain Buffer) ********
+* Ideal op-amp modeled as high-gain VCVS
+* Non-inverting input (+) = nodeB
+* Inverting input (-) = out (direct feedback for unity gain)
+* Vout = A * (V+ - V-) = A * (V(nodeB) - V(out))
+* With A = 1e6, feedback forces V(out) ≈ V(nodeB)
+Eop out 0 nodeB out 1e6
 
-.ac dec 200 1 10Meg
+******** ANALYSIS ********
+* Sweep from 1 Hz to 10 MHz to capture cutoff frequencies across full parameter range
+* With R1,R2 up to 100kΩ and C1,C2 up to 1µF: f_min ≈ 1.6 Hz
+* With R1,R2 down to 1kΩ and C1,C2 down to 100pF: f_max ≈ 1.6 MHz
+.ac dec 100 1 10Meg
 
+******** EXPORT DATA ********
 .control
 run
 set filetype=ascii

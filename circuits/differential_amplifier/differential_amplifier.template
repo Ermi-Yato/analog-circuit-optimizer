@@ -1,32 +1,106 @@
 * Differential Amplifier (Long-Tail Pair)
-* AC simulation: differential input at Q1 base, Q2 base grounded
-* Output: single-ended at col1
+*
+* Topology:
+*   VCC ────┬──────────────────┬────
+*           │                  │
+*          RL1                RL2
+*           │                  │
+*         col1──Cout──out    col2
+*           │                  │
+*          Q1                 Q2
+*           │                  │
+*        base1              base2
+*           │                  │
+*    Cin_p──┘                  └──Cin_n
+*           │                  │
+*        emit1              emit2
+*           │                  │
+*      ┌────┴────┐        ┌────┴────┐
+*     Ce1       RE1      Ce2       RE2
+*      │         │        │         │
+*     GND      tail      GND      tail
+*                 │
+*              R_tail
+*                 │
+*               VEE
+*
+* Design considerations:
+*   - Ce1/Ce2 bypass RE1/RE2 at AC, restoring high differential gain
+*   - Without bypass caps, gain = R_L / (2×R_E + r_e) which can be < 1
+*     for large R_E values in the registry (100Ω to 2kΩ)
+*   - With bypass caps, AC gain ≈ gm × R_L (much higher)
+*   - R_E still provides DC degeneration for bias stability
+*   - R_tail sets tail current: I_tail ≈ (V_E - VEE) / R_tail
+*
+* Differential AC gain ≈ gm × R_L = (I_C / V_T) × R_L
+* At I_C = 1mA, gm = 40mS, with R_L = 5kΩ: gain = 200 V/V ≈ 46 dB
 
+******** SUPPLIES ********
 VCC vcc 0 DC 12
 VEE 0 vee DC 12
 
-Vin_p inp 0 DC 0 AC 1
-Vin_n inn 0 DC 0 AC 0
+******** INPUT SOURCES ********
+* Differential: AC on positive input, negative input at AC ground
+Vsig_p sig_p 0 DC 0 AC 1
+Vsig_n sig_n 0 DC 0 AC 0
 
+* Source impedances
+Rs_p sig_p in_p 600
+Rs_n sig_n in_n 600
+
+******** INPUT COUPLING ********
+Cin_p in_p base1 1u
+Cin_n in_n base2 1u
+
+******** BIAS NETWORK ********
+* Voltage divider sets quiescent base voltage
+* V_base ≈ VCC × 100k/(100k+100k) = 6V (relative to ground)
+* V_emitter ≈ 5.3V, so V_E - VEE = 5.3 - (-12) = 17.3V
+* I_tail = 17.3V / R_tail
+Rb1_q1 vcc base1 100k
+Rb2_q1 base1 0 100k
+Rb1_q2 vcc base2 100k
+Rb2_q2 base2 0 100k
+
+******** DIFFERENTIAL PAIR ********
+Q1 col1 base1 emit1 QNPN
+Q2 col2 base2 emit2 QNPN
+
+******** EMITTER NETWORK ********
+* R_E provides DC degeneration for bias stability and CMRR
+* Ce bypasses R_E at AC for maximum differential gain
+* Without Ce, gain is severely limited by R_E (registry: 100-2000Ω)
+RE1 emit1 tail {RE_VAL}
+Ce1 emit1 tail 47u
+RE2 emit2 tail {RE_VAL}
+Ce2 emit2 tail 47u
+
+******** TAIL CURRENT SOURCE ********
+Rtail tail vee {RTAIL_VAL}
+
+******** COLLECTOR LOADS ********
 RL1 vcc col1 {RL_VAL}
 RL2 vcc col2 {RL_VAL}
 
-Q1 col1 inp emitter1 QNPN
-Q2 col2 inn emitter2 QNPN
+******** OUTPUT COUPLING ********
+Cout col1 out 1u
+Rload out 0 10k
 
-RE1 emitter1 tail {RE_VAL}
-RE2 emitter2 tail {RE_VAL}
+******** TRANSISTOR MODEL ********
+.model QNPN NPN (IS=6.7e-15 BF=200 VAF=100
++                RB=10 RC=1 RE=0.5
++                CJE=18p VJE=0.7  MJE=0.33 TF=300p
++                CJC=4p  VJC=0.75 MJC=0.33 TR=4n
++                XTB=1.5 EG=1.11  XTI=3)
 
-Rtail tail vee {RTAIL_VAL}
+******** ANALYSIS ********
+.ac dec 100 10 500Meg
 
-.model QNPN NPN (BF=150 VAF=100 IS=1e-15 RB=100)
-
-.ac dec 200 10 100Meg
-
+******** EXPORT DATA ********
 .control
 run
 set filetype=ascii
-wrdata ngspice_simulation_output.txt frequency v(col1)
+wrdata ngspice_simulation_output.txt frequency v(out)
 .endc
 
 .end

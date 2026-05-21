@@ -102,19 +102,65 @@ def _transimpedance_dbohm(raw: dict, params: dict) -> float:
 
 def _phase_at_bw(raw: dict, params: dict) -> float:
     """
-    Phase angle at the -3dB bandwidth frequency (proxy for phase margin).
-    Phase margin ≈ 180° + phase_at_unity_gain; here we use the -3dB freq
-    as a practical approximation accessible from closed-loop simulation.
+    Phase margin estimation for transimpedance amplifier.
+    
+    For a TIA with feedback Rf||Cf and input capacitance Cpd:
+    - The feedback zero is at f_z = 1/(2π·Rf·Cf)
+    - The closed-loop bandwidth is approximately f_BW ≈ sqrt(GBW/(2π·Rf·Cpd))
+    - Phase margin ≈ 90° - arctan(f_BW/f_z) + arctan(f_BW/f_p2)
+    
+    For closed-loop measurement, we estimate phase margin from the phase
+    at the -3dB frequency relative to the low-frequency phase:
+    - At DC, inverting TIA has phase ≈ -180° (or +180°)
+    - At -3dB point, additional phase shift indicates stability
+    - Phase margin ≈ 180° - |additional_phase_shift_at_BW|
+    
+    A well-compensated TIA should have 45°-75° phase margin.
     """
-    gain_db  = _gain_db_array(raw)
-    peak     = np.max(gain_db)
-    above    = np.where(gain_db >= peak - 3.0)[0]
+    gain_db = _gain_db_array(raw)
+    freq = raw["freq"]
+    real = raw["real"]
+    imag = raw["imag"]
+    
+    # Find low-frequency (DC) phase as reference
+    # Use average of first few points for stability
+    n_dc = min(5, len(freq) // 10)
+    if n_dc < 1:
+        n_dc = 1
+    phase_dc = np.mean([np.degrees(np.arctan2(imag[i], real[i])) for i in range(n_dc)])
+    
+    # Find -3dB point
+    peak = np.max(gain_db)
+    above = np.where(gain_db >= peak - 3.0)[0]
     if len(above) == 0:
         return np.nan
-    bw_idx   = above[-1]
-    phase    = float(np.degrees(np.arctan2(raw["imag"][bw_idx], raw["real"][bw_idx])))
-    # Phase margin approximation: 180° + phase_at_bw (phase is negative for lag)
-    return 180.0 + phase
+    bw_idx = above[-1]
+    
+    # Phase at -3dB frequency
+    phase_bw = float(np.degrees(np.arctan2(imag[bw_idx], real[bw_idx])))
+    
+    # Calculate phase shift from DC to BW
+    # Normalize to handle wraparound (e.g., -180° to +180°)
+    phase_shift = phase_bw - phase_dc
+    
+    # Normalize phase_shift to [-180, 180] range
+    while phase_shift > 180:
+        phase_shift -= 360
+    while phase_shift < -180:
+        phase_shift += 360
+    
+    # Phase margin estimation:
+    # For a stable system, phase at -3dB should be ~-45° from DC phase
+    # Phase margin ≈ 90° - |phase_shift| for well-behaved single-pole systems
+    # For more complex systems, use: 180° - |total_phase_at_crossover|
+    
+    # Since -3dB is close to but not exactly unity loop gain crossover,
+    # we estimate: PM ≈ 90° + phase_shift (when phase_shift is negative lag)
+    # This gives PM ≈ 45° when phase_shift = -45° (typical for critically damped)
+    phase_margin = 90.0 + phase_shift
+    
+    # Clamp to reasonable range [0, 180]
+    return float(max(0.0, min(180.0, phase_margin)))
 
 
 def _output_swing_v(raw: dict, params: dict) -> float:

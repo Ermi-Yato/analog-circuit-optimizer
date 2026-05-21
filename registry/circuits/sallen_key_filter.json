@@ -12,7 +12,8 @@
       "min": 1000.0,
       "max": 100000.0,
       "default": 10000.0,
-      "scale": "log"
+      "scale": "log",
+      "description": "First resistor in RC network"
     },
     {
       "name": "R2",
@@ -21,25 +22,28 @@
       "min": 1000.0,
       "max": 100000.0,
       "default": 10000.0,
-      "scale": "log"
+      "scale": "log",
+      "description": "Second resistor in RC network"
     },
     {
       "name": "C1",
-      "label": "Input Capacitor C1",
+      "label": "Feedback Capacitor C1",
       "unit": "F",
       "min": 1e-10,
       "max": 1e-06,
       "default": 1e-08,
-      "scale": "log"
+      "scale": "log",
+      "description": "Feedback capacitor from output to node A"
     },
     {
       "name": "C2",
-      "label": "Feedback Capacitor C2",
+      "label": "Shunt Capacitor C2",
       "unit": "F",
       "min": 1e-10,
       "max": 1e-06,
       "default": 1e-08,
-      "scale": "log"
+      "scale": "log",
+      "description": "Capacitor from op-amp input to ground"
     }
   ],
   "metrics": [
@@ -49,7 +53,9 @@
       "unit": "Hz",
       "optimize": "maximize",
       "scale": "log",
-      "target_default": 10000.0
+      "target_default": 10000.0,
+      "valid_range": {"min": 1.0, "max": 10000000.0},
+      "description": "Frequency at which gain drops 3dB below passband"
     },
     {
       "name": "Q_factor",
@@ -57,22 +63,72 @@
       "unit": "",
       "optimize": "maximize",
       "scale": "log",
-      "target_default": 0.707
+      "target_default": 0.707,
+      "valid_range": {"min": 0.05, "max": 10.0},
+      "description": "Quality factor - 0.707 for Butterworth (maximally flat), higher for peaking"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/sallen_key_filter/circuit_model.pkl",
     "scaler_path": "trained_models/sallen_key_filter/feature_scaler.pkl",
-    "trained_on": "2026-05-18",
-    "samples": 1000,
-    "r2_scores": {
-      "Cutoff_Freq_Hz": 0.9985732749220467,
-      "Q_factor": 0.9995394086198569
-    },
+    "trained_on": null,
+    "samples": null,
+    "r2_scores": {},
     "model_type": "mlp",
     "log_metrics": [
       "Cutoff_Freq_Hz",
       "Q_factor"
     ]
+  },
+  "supply": {
+    "comment": "Ideal op-amp, no explicit supply rails"
+  },
+  "fixed_components": {
+    "op_amp_gain": {"value": 1000000, "unit": "V/V", "description": "Ideal op-amp open-loop gain"},
+    "topology": "unity-gain voltage follower (non-inverting buffer)"
+  },
+  "operating_point": {
+    "equations": {
+      "omega_0": "1 / sqrt(R1 * R2 * C1 * C2)",
+      "f_cutoff": "omega_0 / (2 * pi)",
+      "Q": "sqrt(R1 * R2 * C1 * C2) / (C2 * (R1 + R2))",
+      "damping_ratio": "1 / (2 * Q)"
+    },
+    "filter_characteristics": {
+      "type": "2nd-order Butterworth when Q = 0.707",
+      "passband_gain": "0 dB (unity)",
+      "stopband_rolloff": "-40 dB/decade"
+    }
+  },
+  "design_constraints": [
+    {
+      "name": "Q_stability",
+      "expression": "Q < 10.0",
+      "description": "Very high Q causes peaking and potential instability with real op-amps"
+    },
+    {
+      "name": "Q_minimum",
+      "expression": "Q > 0.01",
+      "description": "Very low Q indicates overdamped response with poor selectivity"
+    },
+    {
+      "name": "frequency_range",
+      "expression": "1.0 < f_cutoff < 10e6",
+      "description": "Cutoff frequency should be within practical audio/RF range"
+    }
+  ],
+  "validity_checks": {
+    "overdamped": {
+      "condition": "Q_factor < 0.1",
+      "description": "Severely overdamped - response may be too sluggish"
+    },
+    "underdamped": {
+      "condition": "Q_factor > 5.0",
+      "description": "Highly underdamped - excessive peaking near cutoff"
+    },
+    "frequency_out_of_range": {
+      "condition": "Cutoff_Freq_Hz < 1.0 OR Cutoff_Freq_Hz > 1e7",
+      "description": "Cutoff frequency outside simulation range"
+    }
   }
 }

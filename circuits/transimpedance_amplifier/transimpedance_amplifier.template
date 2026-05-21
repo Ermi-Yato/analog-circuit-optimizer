@@ -1,21 +1,75 @@
 * Transimpedance Amplifier (TIA)
-* Converts input current (photodiode model) to output voltage
-* Feedback: R_f || C_f sets gain and bandwidth
-* Ideal opamp modeled as high-gain VCVS
+*
+* Converts input photocurrent to output voltage
+* Used in optical receivers, photodiode interfaces, precision current sensing
+*
+* Topology:
+*        ┌──── Rf ────┬──── Cf ────┐
+*        │            │            │
+*   Iin ─┴─── Cpd ────┼───(-)──────┼─── Vout
+*                     │            │
+*                    GND──(+)      │
+*                         │        │
+*                       op-amp ────┘
+*
+* Key relationships:
+*   - DC transimpedance gain: Z_t = -Rf (output inverts input current)
+*   - Transimpedance in dBΩ: 20*log10(Rf)
+*   - Feedback pole: f_p = 1 / (2π·Rf·Cf)
+*   - With photodiode capacitance Cpd, the noise gain peaking creates
+*     a second-order system with potential for instability
+*
+* Design tradeoffs:
+*   - Larger Rf → higher gain but lower bandwidth
+*   - Larger Cf → more stability but reduced bandwidth
+*   - Photodiode Cpd (fixed at 10pF here) interacts with Rf and op-amp GBW
+*
+* Op-amp model:
+*   - Ideal VCVS with finite gain-bandwidth product (100 MHz GBW)
+*   - Single-pole rolloff models dominant pole compensation
+*   - This gives realistic phase margin behavior
 
-* Input: AC current source at inverting node
-Iin neg 0 AC 1
+******** INPUT CURRENT SOURCE ********
+* AC current source representing photodiode signal current
+* Iin flows INTO the inverting node (neg)
+Iin 0 neg AC 1
 
-* Feedback network: R_f parallel with C_f
+******** PHOTODIODE JUNCTION CAPACITANCE ********
+* Real photodiodes have 1pF to 100pF junction capacitance
+* This is critical for realistic bandwidth and stability analysis
+* Without Cpd, bandwidth only depends on Rf·Cf, missing the key
+* interaction that makes TIA design challenging
+Cpd neg 0 10p
+
+******** FEEDBACK NETWORK ********
+* Rf sets transimpedance gain: Vout/Iin = -Rf
+* Cf provides phase lead compensation for stability
 Rf out neg {RF_VAL}
 Cf out neg {CF_VAL}
 
-* Ideal opamp: non-inverting (+) = GND, inverting (-) = neg
-* High open-loop gain forces virtual ground at neg
-Eopamp out 0 0 neg 1e6
+******** OP-AMP MODEL ********
+* Single-pole op-amp model with finite GBW
+* Open-loop gain: A(s) = A0 / (1 + s/ω_p) where A0=1e5, f_p=1kHz → GBW=100MHz
+*
+* Implementation: Cascaded VCVS with RC lowpass
+* Stage 1: High gain VCVS (A0 = 1e5)
+* Stage 2: Single-pole filter at 1kHz
+*
+* E_stage1: input is (V+ - V-) = (0 - V(neg))
+Eopamp_dc int_node 0 0 neg 1e5
+Ropamp int_node out_raw 1
+Copamp out_raw 0 159.15n
 
-.ac dec 200 100 1Gig
+* Output buffer (isolate load from internal node)
+Eout out 0 out_raw 0 1
 
+******** ANALYSIS ********
+* Wide sweep to capture full frequency response
+* Low end: verify DC gain
+* High end: capture -3dB point and phase rolloff
+.ac dec 50 100 1G
+
+******** EXPORT DATA ********
 .control
 run
 set filetype=ascii

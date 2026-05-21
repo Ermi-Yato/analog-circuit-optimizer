@@ -1,37 +1,101 @@
 * Class-A BJT Amplifier
-* Transient simulation: 1kHz sine input, 5ms window
-* Voltage-divider bias for stable Class-A operating point
-* Target: V_CE ~ VCC/2 for maximum output swing
+*
+* Single-ended Class-A amplifier with voltage-divider bias
+* Transient simulation for output swing, THD, and efficiency measurement
+*
+* Topology:
+*   VCC ─── R_bias1 ─┬─ R_load ───┬─── Cout ─── out ─── RL_ext
+*                    │            │                       │
+*                   base        col                      GND
+*                    │            │
+*   Vin ─── Cin ────┘           Q1
+*                                │
+*                              emit
+*                                │
+*                            R_emitter
+*                                │
+*                               GND
+*                    │
+*               R_bias2
+*                    │
+*                   GND
+*
+* Design goals:
+*   - Bias point: V_CE ≈ VCC/2 for maximum symmetric swing
+*   - Collector current: I_C = (V_base - 0.7) / R_emitter ≈ V_bias2/(R_bias1+R_bias2) * VCC / R_emitter
+*   - Output swing limited by saturation (V_CE_sat ≈ 0.2V) and cutoff (V_CE ≈ VCC)
+*   - Emitter degeneration improves linearity but reduces gain
+*   - Ce bypass restores AC gain while keeping DC degeneration
+*
+* Transient analysis at 1kHz captures:
+*   - Output voltage swing (peak-to-peak after settling)
+*   - THD from transistor nonlinearity
+*   - Power efficiency (P_out_ac / P_dc)
 
+******** SUPPLY ********
 VCC vcc 0 DC 12
 
-* 1kHz input, 100mV amplitude
-Vin in 0 SIN(0 0.1 1000)
+******** INPUT SIGNAL ********
+* 1kHz sine wave, 50mV amplitude (small signal to stay in linear region)
+* Larger amplitudes may drive some parameter sets into clipping
+Vin sig 0 SIN(0 0.05 1000)
 
-* Input coupling capacitor
-Cin in base 10u
+******** INPUT COUPLING ********
+Cin sig base 10u
 
-* Voltage-divider bias: R_bias1 (VCC->base), R_bias2 (base->GND)
+******** VOLTAGE-DIVIDER BIAS ********
+* Sets DC operating point
+* V_base ≈ VCC * R_bias2 / (R_bias1 + R_bias2)
+* I_C ≈ (V_base - 0.7) / R_emitter
 Rbias1 vcc base {RBIAS1_VAL}
 Rbias2 base 0 {RBIAS2_VAL}
 
-* NPN transistor
-Q1 col base emitter QNPN
+******** TRANSISTOR ********
+Q1 col base emit QNPN
 
-* Collector load
+******** COLLECTOR LOAD ********
+* Sets voltage gain and output impedance
+* Also dissipates power - efficiency depends on this
 Rload vcc col {RLOAD_VAL}
 
-* Emitter degeneration (thermal stability)
-Remitter emitter 0 {REMITTER_VAL}
+******** EMITTER NETWORK ********
+* R_emitter provides DC feedback for bias stability
+* Ce bypasses R_emitter at AC for higher gain
+Remitter emit 0 {REMITTER_VAL}
+Ce emit 0 100u
 
-* Emitter bypass capacitor (boosts AC gain)
-Ce emitter 0 100u
+******** OUTPUT STAGE ********
+* AC coupling to external load
+* RL_ext is the actual load the amplifier drives
+Cout col out 10u
+RL_ext out 0 10k
 
-.model QNPN NPN (BF=150 VAF=100 IS=1e-15 RB=50)
+******** BJT MODEL ********
+* 2N3904-style NPN with parameters relevant for large-signal operation
+* BF: forward current gain
+* VAF: Early voltage (output conductance)
+* IS: saturation current
+* NF/NR: emission coefficients (affect V_BE vs I_C relationship)
+* IKF: high-injection knee current (gain compression at high I_C)
+* ISE/NE: base-emitter leakage (low-current behavior)
+* BR: reverse beta (affects saturation region)
+* RC/RE/RB: parasitic resistances
+.model QNPN NPN (IS=6.7e-15 BF=200 NF=1 VAF=100
++                IKF=0.3 ISE=6.7e-15 NE=1.5 BR=3 NR=1
++                RB=10 RC=1 RE=0.5
++                CJE=18p VJE=0.7  MJE=0.33 TF=300p
++                CJC=4p  VJC=0.75 MJC=0.33 TR=4n)
 
-* Transient: 1us step, 5ms total (5 full cycles of 1kHz)
-.tran 1u 5m
+******** ANALYSIS ********
+* Transient: 1us timestep, 10ms duration (10 cycles of 1kHz)
+* Extra cycles allow settling before measurement
+* The metric extractor skips the first 20% for settling
+.tran 1u 10m
 
+******** EXPORT DATA ********
+* Measure collector voltage (includes DC bias)
+* Metric extractor uses DC level for efficiency calculation
+* and AC component for swing/THD measurement
 .control
 run
 set filetype=ascii
