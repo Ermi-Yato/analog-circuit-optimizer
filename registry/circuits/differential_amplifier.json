@@ -43,17 +43,22 @@
       "unit": "dB",
       "optimize": "maximize",
       "target_default": 30.0,
-      "valid_range": {"min": 10.0, "max": 55.0},
+      "valid_range": {
+        "min": 10.0,
+        "max": 55.0
+      },
       "description": "Differential voltage gain (Vout_diff / Vin_diff) in dB"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/differential_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/differential_amplifier/feature_scaler.pkl",
-    "trained_on": null,
-    "samples": null,
-    "r2_scores": {},
-    "model_type": "random_forest",
+    "trained_on": "2026-05-22",
+    "samples": 941,
+    "r2_scores": {
+      "Diff_Gain_dB": 0.9901897280876149
+    },
+    "model_type": "mlp",
     "log_metrics": []
   },
   "supply": {
@@ -62,13 +67,41 @@
     "comment": "Dual ±12V supply for symmetric operation"
   },
   "fixed_components": {
-    "Rs": {"value": 600, "unit": "Ω", "description": "Source impedance per input"},
-    "Rb1": {"value": 100000, "unit": "Ω", "description": "Upper bias resistor (fixed)"},
-    "Rb2": {"value": 100000, "unit": "Ω", "description": "Lower bias resistor (fixed)"},
-    "Ce": {"value": 47e-6, "unit": "F", "description": "Emitter bypass capacitors"},
-    "Cin": {"value": 1e-6, "unit": "F", "description": "Input coupling capacitors"},
-    "Cout": {"value": 1e-6, "unit": "F", "description": "Output coupling capacitor"},
-    "Rload_ext": {"value": 10000, "unit": "Ω", "description": "External load resistance"}
+    "Rs": {
+      "value": 600,
+      "unit": "Ω",
+      "description": "Source impedance per input"
+    },
+    "Rb1": {
+      "value": 100000,
+      "unit": "Ω",
+      "description": "Upper bias resistor (fixed)"
+    },
+    "Rb2": {
+      "value": 100000,
+      "unit": "Ω",
+      "description": "Lower bias resistor (fixed)"
+    },
+    "Ce": {
+      "value": 4.7e-05,
+      "unit": "F",
+      "description": "Emitter bypass capacitors"
+    },
+    "Cin": {
+      "value": 1e-06,
+      "unit": "F",
+      "description": "Input coupling capacitors"
+    },
+    "Cout": {
+      "value": 1e-06,
+      "unit": "F",
+      "description": "Output coupling capacitor"
+    },
+    "Rload_ext": {
+      "value": 10000,
+      "unit": "Ω",
+      "description": "External load resistance"
+    }
   },
   "transistor": {
     "model": "2N3904-style matched NPN pair",
@@ -89,8 +122,8 @@
     },
     "active_region_requirements": {
       "V_CE_min": 1.0,
-      "I_C_min": 0.1e-3,
-      "I_C_max": 10e-3,
+      "I_C_min": 0.0001,
+      "I_C_max": 0.01,
       "comment": "Both transistors must be in active region with sufficient headroom"
     }
   },

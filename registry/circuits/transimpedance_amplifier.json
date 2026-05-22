@@ -33,7 +33,10 @@
       "unit": "dBΩ",
       "optimize": "maximize",
       "target_default": 100.0,
-      "valid_range": {"min": 60.0, "max": 120.0},
+      "valid_range": {
+        "min": 60.0,
+        "max": 120.0
+      },
       "description": "20*log10(Vout/Iin) in dBΩ, equals 20*log10(R_f)"
     },
     {
@@ -42,7 +45,10 @@
       "unit": "Hz",
       "optimize": "maximize",
       "target_default": 10000000.0,
-      "valid_range": {"min": 100000.0, "max": 100000000.0},
+      "valid_range": {
+        "min": 100000.0,
+        "max": 100000000.0
+      },
       "description": "Closed-loop -3dB bandwidth"
     },
     {
@@ -51,16 +57,23 @@
       "unit": "°",
       "optimize": "maximize",
       "target_default": 60.0,
-      "valid_range": {"min": 30.0, "max": 85.0},
+      "valid_range": {
+        "min": 30.0,
+        "max": 85.0
+      },
       "description": "Stability margin - distance from 180° phase shift at unity loop gain"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/transimpedance_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/transimpedance_amplifier/feature_scaler.pkl",
-    "trained_on": null,
-    "samples": null,
-    "r2_scores": {},
+    "trained_on": "2026-05-22",
+    "samples": 386,
+    "r2_scores": {
+      "Transimpedance_dBOhm": 0.999067660503647,
+      "Bandwidth_Hz": 0.9808108939583131,
+      "Phase_Margin_deg": 0.9726889411144928
+    },
     "model_type": "random_forest",
     "log_metrics": []
   },
@@ -68,9 +81,21 @@
     "comment": "Op-amp assumed to have dual supply or single supply with virtual ground"
   },
   "fixed_components": {
-    "Cpd": {"value": 10e-12, "unit": "F", "description": "Photodiode junction capacitance"},
-    "op_amp_GBW": {"value": 100e6, "unit": "Hz", "description": "Op-amp gain-bandwidth product"},
-    "op_amp_A0": {"value": 100000, "unit": "V/V", "description": "Op-amp DC open-loop gain"}
+    "Cpd": {
+      "value": 1e-11,
+      "unit": "F",
+      "description": "Photodiode junction capacitance"
+    },
+    "op_amp_GBW": {
+      "value": 100000000.0,
+      "unit": "Hz",
+      "description": "Op-amp gain-bandwidth product"
+    },
+    "op_amp_A0": {
+      "value": 100000,
+      "unit": "V/V",
+      "description": "Op-amp DC open-loop gain"
+    }
   },
   "operating_point": {
     "equations": {

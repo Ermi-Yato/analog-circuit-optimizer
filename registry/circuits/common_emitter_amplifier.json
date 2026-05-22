@@ -53,7 +53,10 @@
       "unit": "dB",
       "optimize": "maximize",
       "target_default": 25.0,
-      "valid_range": {"min": 5.0, "max": 50.0},
+      "valid_range": {
+        "min": 5.0,
+        "max": 50.0
+      },
       "description": "Mid-band voltage gain in decibels"
     },
     {
@@ -62,17 +65,23 @@
       "unit": "Hz",
       "optimize": "maximize",
       "target_default": 5000000.0,
-      "valid_range": {"min": 100000.0, "max": 50000000.0},
+      "valid_range": {
+        "min": 100000.0,
+        "max": 50000000.0
+      },
       "description": "Frequency range within 3dB of peak gain"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/common_emitter_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/common_emitter_amplifier/feature_scaler.pkl",
-    "trained_on": null,
-    "samples": null,
-    "r2_scores": {},
-    "model_type": "random_forest",
+    "trained_on": "2026-05-22",
+    "samples": 10218,
+    "r2_scores": {
+      "Peak_Gain_dB": 0.9918164697943272,
+      "Bandwidth_Hz": 0.9036845609481563
+    },
+    "model_type": "mlp",
     "log_metrics": []
   },
   "supply": {
@@ -80,12 +89,36 @@
     "comment": "Single 12V supply, ground reference"
   },
   "fixed_components": {
-    "Rs": {"value": 600, "unit": "Ω", "description": "Source impedance"},
-    "Re_min": {"value": 100, "unit": "Ω", "description": "Minimum unbypassed emitter resistance"},
-    "Cin": {"value": 1e-6, "unit": "F", "description": "Input coupling capacitor"},
-    "Ce": {"value": 47e-6, "unit": "F", "description": "Emitter bypass capacitor"},
-    "Cout": {"value": 1e-6, "unit": "F", "description": "Output coupling capacitor"},
-    "RL": {"value": 10000, "unit": "Ω", "description": "Load resistance"}
+    "Rs": {
+      "value": 600,
+      "unit": "Ω",
+      "description": "Source impedance"
+    },
+    "Re_min": {
+      "value": 100,
+      "unit": "Ω",
+      "description": "Minimum unbypassed emitter resistance"
+    },
+    "Cin": {
+      "value": 1e-06,
+      "unit": "F",
+      "description": "Input coupling capacitor"
+    },
+    "Ce": {
+      "value": 4.7e-05,
+      "unit": "F",
+      "description": "Emitter bypass capacitor"
+    },
+    "Cout": {
+      "value": 1e-06,
+      "unit": "F",
+      "description": "Output coupling capacitor"
+    },
+    "RL": {
+      "value": 10000,
+      "unit": "Ω",
+      "description": "Load resistance"
+    }
   },
   "transistor": {
     "model": "2N3904-style NPN",

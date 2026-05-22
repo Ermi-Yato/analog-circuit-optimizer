@@ -53,7 +53,10 @@
       "unit": "V",
       "optimize": "maximize",
       "target_default": 8.0,
-      "valid_range": {"min": 2.0, "max": 11.0},
+      "valid_range": {
+        "min": 2.0,
+        "max": 11.0
+      },
       "description": "Peak-to-peak output voltage swing (limited by supply and bias)"
     },
     {
@@ -62,7 +65,10 @@
       "unit": "%",
       "optimize": "minimize",
       "target_default": 5.0,
-      "valid_range": {"min": 0.1, "max": 40.0},
+      "valid_range": {
+        "min": 0.1,
+        "max": 40.0
+      },
       "description": "Harmonic distortion as percentage of fundamental"
     },
     {
@@ -71,16 +77,23 @@
       "unit": "%",
       "optimize": "maximize",
       "target_default": 20.0,
-      "valid_range": {"min": 1.0, "max": 25.0},
+      "valid_range": {
+        "min": 1.0,
+        "max": 25.0
+      },
       "description": "AC output power / DC input power (Class-A max ~25%)"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/class_a_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/class_a_amplifier/feature_scaler.pkl",
-    "trained_on": null,
-    "samples": null,
-    "r2_scores": {},
+    "trained_on": "2026-05-23",
+    "samples": 4284,
+    "r2_scores": {
+      "Output_Swing_V": 0.9867345291604044,
+      "THD_percent": 0.9978939803913832,
+      "Efficiency_percent": 0.995814532734567
+    },
     "model_type": "mlp",
     "log_metrics": []
   },
@@ -89,12 +102,36 @@
     "comment": "Single 12V supply"
   },
   "fixed_components": {
-    "Cin": {"value": 10e-6, "unit": "F", "description": "Input coupling capacitor"},
-    "Ce": {"value": 100e-6, "unit": "F", "description": "Emitter bypass capacitor"},
-    "Cout": {"value": 10e-6, "unit": "F", "description": "Output coupling capacitor"},
-    "RL_ext": {"value": 10000, "unit": "Ω", "description": "External load resistance"},
-    "Vin_amplitude": {"value": 0.05, "unit": "V", "description": "Input signal amplitude"},
-    "Vin_frequency": {"value": 1000, "unit": "Hz", "description": "Input signal frequency"}
+    "Cin": {
+      "value": 1e-05,
+      "unit": "F",
+      "description": "Input coupling capacitor"
+    },
+    "Ce": {
+      "value": 0.0001,
+      "unit": "F",
+      "description": "Emitter bypass capacitor"
+    },
+    "Cout": {
+      "value": 1e-05,
+      "unit": "F",
+      "description": "Output coupling capacitor"
+    },
+    "RL_ext": {
+      "value": 10000,
+      "unit": "Ω",
+      "description": "External load resistance"
+    },
+    "Vin_amplitude": {
+      "value": 0.05,
+      "unit": "V",
+      "description": "Input signal amplitude"
+    },
+    "Vin_frequency": {
+      "value": 1000,
+      "unit": "Hz",
+      "description": "Input signal frequency"
+    }
   },
   "transistor": {
     "model": "2N3904-style NPN",

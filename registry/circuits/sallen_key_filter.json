@@ -54,7 +54,10 @@
       "optimize": "maximize",
       "scale": "log",
       "target_default": 10000.0,
-      "valid_range": {"min": 1.0, "max": 10000000.0},
+      "valid_range": {
+        "min": 1.0,
+        "max": 10000000.0
+      },
       "description": "Frequency at which gain drops 3dB below passband"
     },
     {
@@ -64,16 +67,22 @@
       "optimize": "maximize",
       "scale": "log",
       "target_default": 0.707,
-      "valid_range": {"min": 0.05, "max": 10.0},
+      "valid_range": {
+        "min": 0.05,
+        "max": 10.0
+      },
       "description": "Quality factor - 0.707 for Butterworth (maximally flat), higher for peaking"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/sallen_key_filter/circuit_model.pkl",
     "scaler_path": "trained_models/sallen_key_filter/feature_scaler.pkl",
-    "trained_on": null,
-    "samples": null,
-    "r2_scores": {},
+    "trained_on": "2026-05-22",
+    "samples": 804,
+    "r2_scores": {
+      "Cutoff_Freq_Hz": 0.9984217000864667,
+      "Q_factor": 0.9992330084329333
+    },
     "model_type": "mlp",
     "log_metrics": [
       "Cutoff_Freq_Hz",
@@ -84,7 +93,11 @@
     "comment": "Ideal op-amp, no explicit supply rails"
   },
   "fixed_components": {
-    "op_amp_gain": {"value": 1000000, "unit": "V/V", "description": "Ideal op-amp open-loop gain"},
+    "op_amp_gain": {
+      "value": 1000000,
+      "unit": "V/V",
+      "description": "Ideal op-amp open-loop gain"
+    },
     "topology": "unity-gain voltage follower (non-inverting buffer)"
   },
   "operating_point": {

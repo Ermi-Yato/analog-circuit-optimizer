@@ -100,67 +100,73 @@ def _transimpedance_dbohm(raw: dict, params: dict) -> float:
     return _peak_gain_db(raw, params)  # same formula since Iin = 1A AC
 
 
-def _phase_at_bw(raw: dict, params: dict) -> float:
+def _phase_margin_tia(raw: dict, params: dict) -> float:
     """
-    Phase margin estimation for transimpedance amplifier.
+    Analytical phase margin calculation for transimpedance amplifier.
     
-    For a TIA with feedback Rf||Cf and input capacitance Cpd:
-    - The feedback zero is at f_z = 1/(2π·Rf·Cf)
-    - The closed-loop bandwidth is approximately f_BW ≈ sqrt(GBW/(2π·Rf·Cpd))
-    - Phase margin ≈ 90° - arctan(f_BW/f_z) + arctan(f_BW/f_p2)
+    For a TIA with feedback Rf||Cf and photodiode capacitance Cpd, the
+    closed-loop response is a second-order system characterized by:
     
-    For closed-loop measurement, we estimate phase margin from the phase
-    at the -3dB frequency relative to the low-frequency phase:
-    - At DC, inverting TIA has phase ≈ -180° (or +180°)
-    - At -3dB point, additional phase shift indicates stability
-    - Phase margin ≈ 180° - |additional_phase_shift_at_BW|
+    Quality factor Q = (1/Cf) × sqrt(Cpd / (2π × Rf × GBW))
+    Damping ratio ζ = 1 / (2Q)
     
-    A well-compensated TIA should have 45°-75° phase margin.
+    Phase margin is related to damping ratio by:
+    PM = arctan(2ζ / sqrt(sqrt(1 + 4ζ⁴) - 2ζ²))
+    
+    For practical ranges:
+    - Q ≈ 0.5 (ζ ≈ 1.0)   → PM ≈ 76° (overdamped)
+    - Q ≈ 0.707 (ζ ≈ 0.707) → PM ≈ 65° (critically damped, Butterworth)
+    - Q ≈ 1.0 (ζ ≈ 0.5)   → PM ≈ 52° (slightly underdamped)
+    - Q ≈ 1.3 (ζ ≈ 0.38)  → PM ≈ 45° 
+    - Q ≈ 2.0 (ζ ≈ 0.25)  → PM ≈ 30° (underdamped, marginal stability)
+    
+    Fixed circuit parameters (from transimpedance_amplifier.json):
+    - Cpd = 10pF (photodiode junction capacitance)
+    - GBW = 100MHz (op-amp gain-bandwidth product)
     """
-    gain_db = _gain_db_array(raw)
-    freq = raw["freq"]
-    real = raw["real"]
-    imag = raw["imag"]
+    # Extract variable parameters
+    Rf = params.get("R_f")
+    Cf = params.get("C_f")
     
-    # Find low-frequency (DC) phase as reference
-    # Use average of first few points for stability
-    n_dc = min(5, len(freq) // 10)
-    if n_dc < 1:
-        n_dc = 1
-    phase_dc = np.mean([np.degrees(np.arctan2(imag[i], real[i])) for i in range(n_dc)])
-    
-    # Find -3dB point
-    peak = np.max(gain_db)
-    above = np.where(gain_db >= peak - 3.0)[0]
-    if len(above) == 0:
+    if Rf is None or Cf is None:
         return np.nan
-    bw_idx = above[-1]
     
-    # Phase at -3dB frequency
-    phase_bw = float(np.degrees(np.arctan2(imag[bw_idx], real[bw_idx])))
+    # Fixed parameters for TIA (from registry fixed_components)
+    Cpd = 10e-12   # 10pF photodiode capacitance
+    GBW = 100e6    # 100MHz op-amp GBW
     
-    # Calculate phase shift from DC to BW
-    # Normalize to handle wraparound (e.g., -180° to +180°)
-    phase_shift = phase_bw - phase_dc
+    # Calculate quality factor Q
+    # Q = (1/Cf) × sqrt(Cpd / (2π × Rf × GBW))
+    denominator = 2 * math.pi * Rf * GBW
+    if denominator <= 0:
+        return np.nan
     
-    # Normalize phase_shift to [-180, 180] range
-    while phase_shift > 180:
-        phase_shift -= 360
-    while phase_shift < -180:
-        phase_shift += 360
+    Q = (1.0 / Cf) * math.sqrt(Cpd / denominator)
     
-    # Phase margin estimation:
-    # For a stable system, phase at -3dB should be ~-45° from DC phase
-    # Phase margin ≈ 90° - |phase_shift| for well-behaved single-pole systems
-    # For more complex systems, use: 180° - |total_phase_at_crossover|
+    # Calculate damping ratio ζ = 1/(2Q)
+    if Q <= 0:
+        return np.nan
+    zeta = 1.0 / (2.0 * Q)
     
-    # Since -3dB is close to but not exactly unity loop gain crossover,
-    # we estimate: PM ≈ 90° + phase_shift (when phase_shift is negative lag)
-    # This gives PM ≈ 45° when phase_shift = -45° (typical for critically damped)
-    phase_margin = 90.0 + phase_shift
+    # Calculate phase margin using exact formula:
+    # PM = arctan(2ζ / sqrt(sqrt(1 + 4ζ⁴) - 2ζ²))
+    zeta_sq = zeta * zeta
+    zeta_4th = zeta_sq * zeta_sq
     
-    # Clamp to reasonable range [0, 180]
-    return float(max(0.0, min(180.0, phase_margin)))
+    inner = math.sqrt(1.0 + 4.0 * zeta_4th) - 2.0 * zeta_sq
+    
+    # Handle edge cases where inner could be negative or zero
+    if inner <= 0:
+        # Very high damping ratio - system is heavily overdamped
+        # Phase margin approaches 90°
+        return 90.0
+    
+    argument = 2.0 * zeta / math.sqrt(inner)
+    phase_margin = math.degrees(math.atan(argument))
+    
+    # Clamp to reasonable range [0, 90] for this formula
+    # (PM > 90° means heavily overdamped, effectively very stable)
+    return float(max(0.0, min(90.0, phase_margin)))
 
 
 def _output_swing_v(raw: dict, params: dict) -> float:
@@ -241,7 +247,7 @@ _EXTRACTORS: dict[str, Callable] = {
     "Bandwidth_Hz":          _bandwidth_hz,
     "Cutoff_Freq_Hz":        _cutoff_freq_hz,
     "Q_factor":              _q_factor,
-    "Phase_Margin_deg":      _phase_at_bw,
+    "Phase_Margin_deg":      _phase_margin_tia,
     "Output_Swing_V":        _output_swing_v,
     "THD_percent":           _thd_percent,
     "Efficiency_percent":    _efficiency_percent,
@@ -257,7 +263,7 @@ _PATTERN_FALLBACKS: list[tuple[str, str | None, Callable]] = [
     ("_hz",       "ac",        _bandwidth_hz),
     ("freq",      "ac",        _cutoff_freq_hz),
     ("cutoff",    "ac",        _cutoff_freq_hz),
-    ("phase",     "ac",        _phase_at_bw),
+    ("phase",     "ac",        _phase_margin_tia),
     ("impedance", "ac",        _transimpedance_dbohm),
     # Transient patterns
     ("swing",     "transient", _output_swing_v),
