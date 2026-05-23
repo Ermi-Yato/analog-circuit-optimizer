@@ -35,6 +35,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 
 from core.models.base_model import BaseModel
+from core.dataset.preprocessor import compute_ce_derived_features
 
 
 # ── Loss kernels ──────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ def build_fitness_fn(
     loss_type: str = "mae",
     direction_penalty: float = 1.0,   # multiplier for undershooting maximize / overshooting minimize
     tolerance_pct: float = 0.0,       # dead-zone: |e|/scale < tolerance → 0 penalty
+    circuit_id: str | None = None,    # circuit ID for derived feature computation
 ) -> Callable[[list[float]], tuple[float]]:
     """
     Build a DEAP-compatible fitness function.
@@ -92,6 +94,9 @@ def build_fitness_fn(
                            direction (e.g. gain too low for a maximize metric).
                            1.0 = symmetric; 2.0 = twice the pain for wrong-side miss.
         tolerance_pct:     Dead-zone radius as % of target scale. 0 = disabled.
+        circuit_id:        Circuit ID for physics-informed derived features.
+                           If provided, derived features are computed from raw
+                           parameters before passing to the model.
 
     Returns:
         fitness_fn(individual) -> (score,)  — lower is better.
@@ -127,6 +132,9 @@ def build_fitness_fn(
         if log_indices:
             X = X.copy()
             X[:, log_indices] = np.log10(np.abs(X[:, log_indices]).clip(1e-300))
+        # Compute physics-informed derived features if applicable
+        if circuit_id == "common_emitter_amplifier":
+            X = compute_ce_derived_features(X)
         X_scaled = scaler.transform(X)
         y_pred = model.predict(X_scaled).ravel()
         if log_metric_indices:
@@ -178,6 +186,7 @@ def score_vector(
     loss_type: str = "mae",
     direction_penalty: float = 1.0,
     tolerance_pct: float = 0.0,
+    circuit_id: str | None = None,
 ) -> np.ndarray:
     """
     Batch fitness evaluation — returns a 1-D array of scores for each row in X.
@@ -203,6 +212,9 @@ def score_vector(
     Xc = X.copy().astype(float)
     if log_indices:
         Xc[:, log_indices] = np.log10(np.abs(Xc[:, log_indices]).clip(1e-300))
+    # Compute physics-informed derived features if applicable
+    if circuit_id == "common_emitter_amplifier":
+        Xc = compute_ce_derived_features(Xc)
     preds = model.predict(scaler.transform(Xc))
     if preds.ndim == 1:
         preds = preds.reshape(-1, 1)

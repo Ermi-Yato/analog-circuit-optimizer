@@ -75,11 +75,11 @@
   "model": {
     "surrogate_path": "trained_models/common_emitter_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/common_emitter_amplifier/feature_scaler.pkl",
-    "trained_on": "2026-05-22",
-    "samples": 10218,
+    "trained_on": "2026-05-23",
+    "samples": 5536,
     "r2_scores": {
-      "Peak_Gain_dB": 0.9918164697943272,
-      "Bandwidth_Hz": 0.9036845609481563
+      "Peak_Gain_dB": 0.9972935343699391,
+      "Bandwidth_Hz": 0.994370869433196
     },
     "model_type": "mlp",
     "log_metrics": []

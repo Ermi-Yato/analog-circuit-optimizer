@@ -88,11 +88,11 @@
     "surrogate_path": "trained_models/class_a_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/class_a_amplifier/feature_scaler.pkl",
     "trained_on": "2026-05-23",
-    "samples": 4284,
+    "samples": 4369,
     "r2_scores": {
-      "Output_Swing_V": 0.9867345291604044,
-      "THD_percent": 0.9978939803913832,
-      "Efficiency_percent": 0.995814532734567
+      "Output_Swing_V": 0.976193232430504,
+      "THD_percent": 0.9944355908885074,
+      "Efficiency_percent": 0.9941592714578404
     },
     "model_type": "mlp",
     "log_metrics": []

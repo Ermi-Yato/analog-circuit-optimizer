@@ -47,18 +47,64 @@ def _peak_gain_db(raw: dict, params: dict) -> float:
     return float(np.max(_gain_db_array(raw)))
 
 
+def _interpolate_crossing(freq: np.ndarray, gain_db: np.ndarray, 
+                           threshold: float, idx1: int, idx2: int) -> float:
+    """
+    Linear interpolation to find the exact frequency where gain crosses threshold.
+    idx1 and idx2 are adjacent indices bracketing the crossing.
+    """
+    f1, f2 = freq[idx1], freq[idx2]
+    g1, g2 = gain_db[idx1], gain_db[idx2]
+    
+    if abs(g2 - g1) < 1e-12:
+        return (f1 + f2) / 2.0
+    
+    # Linear interpolation: f = f1 + (threshold - g1) * (f2 - f1) / (g2 - g1)
+    f_cross = f1 + (threshold - g1) * (f2 - f1) / (g2 - g1)
+    return float(f_cross)
+
+
 def _bandwidth_hz(raw: dict, params: dict) -> float:
     """
     3dB bandwidth for an amplifier (bandpass-style):
-    BW = f_high - f_low  where both are within -3dB of peak gain.
+    BW = f_high - f_low where both are the -3dB frequencies.
+    
+    Uses linear interpolation to find the exact -3dB crossing frequencies
+    rather than snapping to the nearest frequency grid point. This reduces
+    quantization noise in the extracted bandwidth values.
+    
     Returns np.nan if the gain never drops 3dB within the sweep range.
     """
     gain_db = _gain_db_array(raw)
-    peak    = np.max(gain_db)
-    above   = np.where(gain_db >= peak - 3.0)[0]
+    freq = raw["freq"]
+    peak = np.max(gain_db)
+    threshold = peak - 3.0
+    
+    # Find all indices where gain is above threshold
+    above = np.where(gain_db >= threshold)[0]
     if len(above) == 0:
         return np.nan
-    bw = raw["freq"][above[-1]] - raw["freq"][above[0]]
+    
+    # Find the -3dB crossing points with interpolation
+    # Low-frequency side: find where gain rises to threshold
+    idx_low = above[0]
+    if idx_low > 0:
+        # Interpolate between idx_low-1 (below threshold) and idx_low (above threshold)
+        f_low = _interpolate_crossing(freq, gain_db, threshold, idx_low - 1, idx_low)
+    else:
+        # Gain is already above threshold at lowest frequency
+        f_low = freq[0]
+    
+    # High-frequency side: find where gain falls to threshold
+    idx_high = above[-1]
+    if idx_high < len(gain_db) - 1:
+        # Interpolate between idx_high (above threshold) and idx_high+1 (below threshold)
+        f_high = _interpolate_crossing(freq, gain_db, threshold, idx_high, idx_high + 1)
+    else:
+        # Gain is still above threshold at highest frequency
+        f_high = freq[-1]
+    
+    bw = f_high - f_low
     return float(bw) if bw > 0 else np.nan
 
 
@@ -66,15 +112,29 @@ def _cutoff_freq_hz(raw: dict, params: dict) -> float:
     """
     -3dB cutoff for a low-pass filter:
     The frequency where gain first drops 3dB below DC gain.
+    
+    Uses linear interpolation to find the exact -3dB crossing frequency
+    rather than snapping to the nearest frequency grid point.
     """
-    gain_db  = _gain_db_array(raw)
-    dc_gain  = gain_db[0]           # gain at lowest simulated frequency
-    target   = dc_gain - 3.0
-    below    = np.where(gain_db <= target)[0]
+    gain_db = _gain_db_array(raw)
+    freq = raw["freq"]
+    dc_gain = gain_db[0]  # gain at lowest simulated frequency
+    threshold = dc_gain - 3.0
+    
+    below = np.where(gain_db <= threshold)[0]
     if len(below) == 0:
         # Gain never drops 3dB — return the sweep upper limit
-        return float(raw["freq"][-1])
-    return float(raw["freq"][below[0]])
+        return float(freq[-1])
+    
+    idx_cross = below[0]
+    if idx_cross > 0:
+        # Interpolate between idx_cross-1 (above threshold) and idx_cross (below threshold)
+        f_cutoff = _interpolate_crossing(freq, gain_db, threshold, idx_cross - 1, idx_cross)
+    else:
+        # Already below threshold at lowest frequency (unusual)
+        f_cutoff = freq[0]
+    
+    return float(f_cutoff)
 
 
 def _q_factor(raw: dict, params: dict) -> float:

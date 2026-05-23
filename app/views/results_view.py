@@ -479,6 +479,10 @@ class ResultsView(QWidget):
                         if log_idx:
                             X = X.copy()
                             X[:, log_idx] = np.log10(np.abs(X[:, log_idx]).clip(1e-300))
+                        # Compute physics-informed derived features if applicable
+                        if circuit_id == "common_emitter_amplifier":
+                            from core.dataset.preprocessor import compute_ce_derived_features
+                            X = compute_ce_derived_features(X)
                         X_sc   = scaler.transform(X)
                         y_p    = model.predict(X_sc).ravel()
                         mnames = [m["name"] for m in circuit["metrics"]]

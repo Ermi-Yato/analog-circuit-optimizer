@@ -25,7 +25,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 
 import registry.circuit_registry as reg
-from core.dataset.preprocessor import load_csv, validate, fit_transform
+from core.dataset.preprocessor import load_csv, validate, fit_transform, add_derived_features
 from core.models.random_forest import RandomForestModel
 from core.models.mlp import MLPModel
 
@@ -90,6 +90,13 @@ def train(
 
     if verbose:
         print(f"  Dataset    : {len(df)} rows (clean)")
+
+    # 2b. Add physics-informed derived features
+    df, derived_features = add_derived_features(df, circuit_id)
+    if derived_features:
+        param_names = param_names + derived_features
+        if verbose:
+            print(f"  Derived    : {len(derived_features)} physics-based features")
 
     # 3a. Log-transform log-scale parameters before StandardScaler.
     #     For circuits like Sallen-Key where fc = 1/(2pi*sqrt(R1*R2*C1*C2)),

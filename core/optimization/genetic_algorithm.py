@@ -96,7 +96,8 @@ def optimize(
 
     fitness_fn = build_fitness_fn(model, scaler, targets, metric_defs, weights,
                                   log_indices=log_indices or None,
-                                  log_metric_indices=log_metric_indices or None)
+                                  log_metric_indices=log_metric_indices or None,
+                                  circuit_id=circuit_id)
 
     # DEAP toolbox setup
     toolbox = base.Toolbox()
@@ -138,6 +139,10 @@ def optimize(
         if log_indices:
             X = X.copy()
             X[:, log_indices] = np.log10(np.abs(X[:, log_indices]).clip(1e-300))
+        # Compute physics-informed derived features if applicable
+        if circuit_id == "common_emitter_amplifier":
+            from core.dataset.preprocessor import compute_ce_derived_features
+            X = compute_ce_derived_features(X)
         preds = model.predict(scaler.transform(X))   # (n_inds, n_metrics)
         if preds.ndim == 1:
             preds = preds.reshape(-1, 1)
@@ -233,6 +238,10 @@ def optimize(
         if log_indices:
             X = X.copy()
             X[:, log_indices] = np.log10(np.abs(X[:, log_indices]).clip(1e-300))
+        # Compute physics-informed derived features if applicable
+        if circuit_id == "common_emitter_amplifier":
+            from core.dataset.preprocessor import compute_ce_derived_features
+            X = compute_ce_derived_features(X)
         preds = model.predict(scaler.transform(X))
         if preds.ndim == 1:
             preds = preds.reshape(-1, 1)

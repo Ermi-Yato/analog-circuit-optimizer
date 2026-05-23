@@ -109,6 +109,10 @@ def optimize(
         Xc = X.copy()
         if log_indices:
             Xc[:, log_indices] = np.log10(np.abs(Xc[:, log_indices]).clip(1e-300))
+        # Compute physics-informed derived features if applicable
+        if circuit_id == "common_emitter_amplifier":
+            from core.dataset.preprocessor import compute_ce_derived_features
+            Xc = compute_ce_derived_features(Xc)
         preds = model.predict(scaler.transform(Xc))
         if preds.ndim == 1:
             preds = preds.reshape(-1, 1)
@@ -128,6 +132,7 @@ def optimize(
             loss_type=loss_type,
             direction_penalty=direction_penalty,
             tolerance_pct=tolerance_pct,
+            circuit_id=circuit_id,
         )
         return float(scores[0])
 
