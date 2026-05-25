@@ -17,49 +17,18 @@ from PySide6.QtGui import QFont
 import registry.circuit_registry as reg
 from app.workers.simulation_worker import SimulationWorker
 
-# Design tokens
-BG0 = "#0d1117"; BG1 = "#161b22"; BG2 = "#1c2128"
-BORDER = "#30363d"; BORDER_F = "#388bfd"
-TEXT = "#e6edf3"; TEXT_SUB = "#8b949e"; TEXT_DIM = "#484f58"
-BLUE = "#388bfd"; BLUE_HOV = "#1f6feb"; BLUE_LT = "#58a6ff"
-GREEN = "#3fb950"; RED = "#f85149"; YELLOW = "#d29922"
+from app.design_system import (
+    BG0, BG1, BG2, BORDER, TEXT, TEXT_SUB, TEXT_DIM,
+    BLUE, BLUE_HOV, BLUE_LT, GREEN, RED, YELLOW,
+    divider as _divider, eyebrow as _eyebrow,
+    input_ss, table_ss,
+)
 
 _PREVIEW_ROWS = 20
 
 
-def _divider() -> QFrame:
-    f = QFrame()
-    f.setFrameShape(QFrame.Shape.HLine)
-    f.setFixedHeight(1)
-    f.setStyleSheet(f"background: {BORDER}; border: none;")
-    return f
-
-
-def _eyebrow(text: str) -> QLabel:
-    lbl = QLabel(text.upper())
-    lbl.setStyleSheet(
-        f"color: {TEXT_DIM}; font-size: 10px; font-weight: 600; letter-spacing: 1.2px;"
-    )
-    return lbl
-
-
 def _input_ss() -> str:
-    return f"""
-        QComboBox, QSpinBox {{
-            background: {BG2}; color: {TEXT};
-            border: 1px solid {BORDER}; border-radius: 6px;
-            padding: 0 10px; font-size: 12px; min-height: 34px;
-        }}
-        QComboBox:focus, QSpinBox:focus {{ border-color: {BORDER_F}; }}
-        QComboBox::drop-down {{ border: none; padding-right: 8px; }}
-        QComboBox QAbstractItemView {{
-            background: {BG2}; color: {TEXT};
-            border: 1px solid {BORDER}; selection-background-color: {BLUE};
-        }}
-        QSpinBox::up-button, QSpinBox::down-button {{
-            width: 18px; border: none; background: {BG2};
-        }}
-    """
+    return input_ss("QComboBox, QSpinBox")
 
 
 class DatasetView(QWidget):
@@ -178,22 +147,7 @@ class DatasetView(QWidget):
         layout.addWidget(_eyebrow(f"Dataset Preview — first {_PREVIEW_ROWS} rows"))
 
         self._table = QTableWidget(0, 0)
-        self._table.setStyleSheet(f"""
-            QTableWidget {{
-                background: {BG1}; color: {TEXT};
-                border: 1px solid {BORDER}; border-radius: 6px;
-                gridline-color: {BORDER}; font-size: 12px;
-                alternate-background-color: {BG0};
-            }}
-            QHeaderView::section {{
-                background: {BG2}; color: {TEXT_SUB};
-                border: none; border-bottom: 1px solid {BORDER};
-                padding: 0 10px; height: 32px;
-                font-size: 11px; font-weight: 600;
-            }}
-            QTableWidget::item {{ padding: 0 10px; border: none; }}
-            QTableWidget::item:selected {{ background: {BLUE}22; color: {TEXT}; }}
-        """)
+        self._table.setStyleSheet(table_ss())
         self._table.setAlternatingRowColors(True)
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)

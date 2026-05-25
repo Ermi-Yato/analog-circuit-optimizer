@@ -87,7 +87,7 @@
   "model": {
     "surrogate_path": "trained_models/class_a_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/class_a_amplifier/feature_scaler.pkl",
-    "trained_on": "2026-05-23",
+    "trained_on": "2026-05-25",
     "samples": 4369,
     "r2_scores": {
       "Output_Swing_V": 0.976193232430504,

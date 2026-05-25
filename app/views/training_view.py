@@ -16,44 +16,16 @@ from PySide6.QtGui import QFont
 import registry.circuit_registry as reg
 from app.workers.training_worker import TrainingWorker
 
-# Design tokens
-BG0 = "#0d1117"; BG1 = "#161b22"; BG2 = "#1c2128"
-BORDER = "#30363d"; BORDER_F = "#388bfd"
-TEXT = "#e6edf3"; TEXT_SUB = "#8b949e"; TEXT_DIM = "#484f58"
-BLUE = "#388bfd"; BLUE_HOV = "#1f6feb"; BLUE_LT = "#58a6ff"
-GREEN = "#3fb950"; RED = "#f85149"; YELLOW = "#d29922"
-
-
-def _divider() -> QFrame:
-    f = QFrame()
-    f.setFrameShape(QFrame.Shape.HLine)
-    f.setFixedHeight(1)
-    f.setStyleSheet(f"background: {BORDER}; border: none;")
-    return f
-
-
-def _eyebrow(text: str) -> QLabel:
-    lbl = QLabel(text.upper())
-    lbl.setStyleSheet(
-        f"color: {TEXT_DIM}; font-size: 10px; font-weight: 600; letter-spacing: 1.2px;"
-    )
-    return lbl
+from app.design_system import (
+    BG0, BG1, BG2, BORDER, TEXT, TEXT_SUB, TEXT_DIM,
+    BLUE, BLUE_HOV, BLUE_LT, GREEN, RED, YELLOW,
+    divider as _divider, eyebrow as _eyebrow,
+    input_ss, btn_primary_ss,
+)
 
 
 def _input_ss() -> str:
-    return f"""
-        QComboBox {{
-            background: {BG2}; color: {TEXT};
-            border: 1px solid {BORDER}; border-radius: 6px;
-            padding: 0 10px; font-size: 12px; min-height: 34px;
-        }}
-        QComboBox:focus {{ border-color: {BORDER_F}; }}
-        QComboBox::drop-down {{ border: none; padding-right: 8px; }}
-        QComboBox QAbstractItemView {{
-            background: {BG2}; color: {TEXT};
-            border: 1px solid {BORDER}; selection-background-color: {BLUE};
-        }}
-    """
+    return input_ss("QComboBox")
 
 
 def _quality_label(r2: float) -> tuple[str, str]:

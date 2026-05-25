@@ -21,26 +21,14 @@ import registry.circuit_registry as reg
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _LOGO_PATH    = os.path.join(_PROJECT_ROOT, "logo.jpg")
 
-# ── Design tokens ──────────────────────────────────────────────────────────────
-BG0    = "#0d1117"
-BG1    = "#161b22"
-BG2    = "#1c2128"
-BORDER = "#30363d"
-TEXT   = "#e6edf3"
-TEXT_S = "#8b949e"
-TEXT_D = "#484f58"
-BLUE   = "#388bfd"
-GREEN  = "#3fb950"
-YELLOW = "#d29922"
-RED    = "#f85149"
+from app.design_system import (
+    BG0, BG1, BG2, BORDER, TEXT, TEXT_SUB as TEXT_S, TEXT_DIM as TEXT_D,
+    BLUE, GREEN, YELLOW, RED, divider,
+)
 
 
 def _sep() -> QFrame:
-    f = QFrame()
-    f.setFrameShape(QFrame.Shape.HLine)
-    f.setFixedHeight(1)
-    f.setStyleSheet(f"background: {BORDER}; border: none;")
-    return f
+    return divider()
 
 
 def _dataset_path(circuit_id: str) -> str:

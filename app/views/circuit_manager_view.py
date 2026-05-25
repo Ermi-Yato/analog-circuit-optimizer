@@ -30,24 +30,14 @@ _PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
-# ── Design tokens ────────────────────────────────────────────────────────────
-BG0      = "#0d1117"   # deepest background
-BG1      = "#161b22"   # panel / sidebar
-BG2      = "#1c2128"   # card / input surface
-BORDER   = "#30363d"   # subtle borders
-BORDER_F = "#388bfd"   # focused input border (blue)
-
-TEXT     = "#e6edf3"   # primary text
-TEXT_SUB = "#8b949e"   # secondary / labels
-TEXT_DIM = "#484f58"   # placeholder / disabled
-
-BLUE     = "#388bfd"   # primary action
-BLUE_HOV = "#1f6feb"   # blue hover
-BLUE_LT  = "#58a6ff"   # links / ghost button text
-
-GREEN    = "#3fb950"   # success / trained
-RED      = "#f85149"   # error / untrained
-YELLOW   = "#d29922"   # warning
+from app.design_system import (
+    BG0, BG1, BG2, BORDER, BORDER_F, TEXT, TEXT_SUB, TEXT_DIM,
+    BLUE, BLUE_HOV, BLUE_LT, GREEN, RED, YELLOW,
+    divider as _ds_divider, eyebrow as _ds_eyebrow,
+    input_ss as _ds_input_ss,
+    table_ss, btn_primary_ss, btn_secondary_ss, btn_ghost_ss, btn_danger_ss,
+    tab_ss,
+)
 
 _PARAM_COLS  = ["name", "label", "unit", "min", "max", "default", "scale"]
 _METRIC_COLS = ["name", "label", "unit", "optimize"]
@@ -64,55 +54,18 @@ class _FlowLayout(QHBoxLayout):
 # ── Style helpers ─────────────────────────────────────────────────────────────
 
 def _divider() -> QFrame:
-    f = QFrame()
-    f.setFrameShape(QFrame.Shape.HLine)
-    f.setFixedHeight(1)
-    f.setStyleSheet(f"background: {BORDER}; border: none;")
-    return f
+    return _ds_divider()
 
 
 def _eyebrow(text: str) -> QLabel:
-    """Small uppercase section label."""
-    lbl = QLabel(text.upper())
-    lbl.setStyleSheet(
-        f"color: {TEXT_DIM}; font-size: 10px; font-weight: 600; letter-spacing: 1.2px;"
-    )
-    return lbl
+    return _ds_eyebrow(text)
 
 
-_INPUT_SS = f"""
-    QLineEdit, QComboBox {{
-        background: {BG2}; color: {TEXT};
-        border: 1px solid {BORDER}; border-radius: 6px;
-        padding: 0 10px; font-size: 12px; min-height: 32px;
-    }}
-    QLineEdit:focus {{ border-color: {BORDER_F}; }}
+_INPUT_SS = _ds_input_ss("QLineEdit, QComboBox") + f"""
     QLineEdit:read-only {{ color: {TEXT_DIM}; }}
-    QComboBox:focus {{ border-color: {BORDER_F}; }}
-    QComboBox::drop-down {{ border: none; padding-right: 8px; }}
-    QComboBox QAbstractItemView {{
-        background: {BG2}; color: {TEXT};
-        border: 1px solid {BORDER}; selection-background-color: {BLUE};
-    }}
 """
 
-_TABLE_SS = f"""
-    QTableWidget {{
-        background: {BG1}; color: {TEXT};
-        border: 1px solid {BORDER}; border-radius: 6px;
-        gridline-color: {BORDER}; font-size: 12px;
-        alternate-background-color: {BG0};
-    }}
-    QHeaderView::section {{
-        background: {BG2}; color: {TEXT_SUB};
-        border: none; border-bottom: 1px solid {BORDER};
-        padding: 0 10px; height: 32px;
-        font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
-    }}
-    QTableWidget::item {{ padding: 0 10px; border: none; }}
-    QTableWidget::item:selected {{ background: {BLUE}22; color: {TEXT}; }}
-    QTableCornerButton::section {{ background: {BG2}; border: none; }}
-"""
+_TABLE_SS = table_ss()
 
 
 def _btn_primary(text: str) -> QPushButton:

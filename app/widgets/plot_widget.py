@@ -15,12 +15,7 @@ matplotlib.use("QtAgg")
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
-# Design tokens
-BG0    = "#0d1117"
-BG1    = "#161b22"
-BORDER = "#30363d"
-TEXT   = "#e6edf3"
-TEXT_S = "#8b949e"
+from app.design_system import BG0, BG1, BORDER, TEXT, TEXT_SUB as TEXT_S
 
 
 class SchematicWidget(FigureCanvasQTAgg):

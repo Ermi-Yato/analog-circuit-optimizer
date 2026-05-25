@@ -53,10 +53,10 @@
   "model": {
     "surrogate_path": "trained_models/differential_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/differential_amplifier/feature_scaler.pkl",
-    "trained_on": "2026-05-22",
-    "samples": 941,
+    "trained_on": "2026-05-25",
+    "samples": 959,
     "r2_scores": {
-      "Diff_Gain_dB": 0.9901897280876149
+      "Diff_Gain_dB": 0.8018126254867253
     },
     "model_type": "mlp",
     "log_metrics": []
