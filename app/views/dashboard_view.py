@@ -288,11 +288,11 @@ class DashboardView(QWidget):
 
         txt = QVBoxLayout()
         txt.setSpacing(3)
-        title = QLabel("Xtal")
+        title = QLabel("Analog Circuits Optimization using ML")
         title.setFont(QFont("Segoe UI", 26, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {TEXT};")
         sub = QLabel("ML-Assisted Analog Circuit Optimizer. Set a target, get component values.")
-        sub.setStyleSheet(f"color: {TEXT_S}; font-size: 12px;")
+        sub.setStyleSheet(f"color: {TEXT_S}; font-size: 14px;")
         txt.addWidget(title)
         txt.addWidget(sub)
         row.addLayout(txt, 1)
@@ -350,7 +350,7 @@ class DashboardView(QWidget):
             summary = QLabel(
                 f"{len(circuits)} circuits   {with_data} with data   {trained} trained"
             )
-            summary.setStyleSheet(f"color: {TEXT_D}; font-size: 11px;")
+            summary.setStyleSheet(f"color: {TEXT_D}; font-size: 12px;")
             vbox.addWidget(summary)
 
         # 2-column grid

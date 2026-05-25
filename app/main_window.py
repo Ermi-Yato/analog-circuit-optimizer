@@ -93,7 +93,7 @@ class _ToggleButton(QPushButton):
 class MainWindow(QMainWindow):
     def __init__(self, ngspice_available: bool = False):
         super().__init__()
-        self.setWindowTitle("Xtal")
+        self.setWindowTitle("Analog Circuit Optimizer")
         self.setWindowIcon(QIcon(_LOGO_PATH))
         self.setMinimumSize(1100, 700)
         self.setStyleSheet(f"background: {BG0};")
@@ -162,7 +162,7 @@ class MainWindow(QMainWindow):
         logo_lbl.setStyleSheet("background: transparent;")
         tr.addWidget(logo_lbl)
 
-        name_lbl = QLabel("Xtal")
+        name_lbl = QLabel("Analog Circuits Optimization")
         name_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
         name_lbl.setStyleSheet(f"color: {TEXT}; background: transparent;")
         tr.addWidget(name_lbl, 1)
