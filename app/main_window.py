@@ -16,18 +16,10 @@ from app.views.dataset_view         import DatasetView
 from app.views.training_view        import TrainingView
 from app.views.optimizer_view       import OptimizerView
 from app.views.results_view         import ResultsView
-
-# Design tokens
-BG0    = "#0d1117"
-BG1    = "#161b22"
-BG2    = "#1c2128"
-BORDER = "#30363d"
-TEXT   = "#e6edf3"
-TEXT_S = "#8b949e"
-TEXT_D = "#484f58"
-BLUE   = "#388bfd"
-GREEN  = "#3fb950"
-RED    = "#f85149"
+from app.design_system import (
+    BG0, BG1, BG2, BORDER, TEXT, TEXT_SUB as TEXT_S, TEXT_DIM as TEXT_D,
+    BLUE, GREEN, RED,
+)
 
 _SIDEBAR_W = 196
 _ITEM_H    = 40
