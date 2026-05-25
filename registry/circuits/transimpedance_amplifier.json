@@ -12,7 +12,8 @@
       "min": 1000.0,
       "max": 1000000.0,
       "default": 100000.0,
-      "scale": "log"
+      "scale": "log",
+      "description": "Transimpedance gain setting resistor"
     },
     {
       "name": "C_f",
@@ -21,7 +22,8 @@
       "min": 1e-13,
       "max": 1e-10,
       "default": 1e-12,
-      "scale": "log"
+      "scale": "log",
+      "description": "Compensation capacitor for stability"
     }
   ],
   "metrics": [
@@ -30,34 +32,114 @@
       "label": "Transimpedance Gain",
       "unit": "dBΩ",
       "optimize": "maximize",
-      "target_default": 100.0
+      "target_default": 100.0,
+      "valid_range": {
+        "min": 60.0,
+        "max": 120.0
+      },
+      "description": "20*log10(Vout/Iin) in dBΩ, equals 20*log10(R_f)"
     },
     {
       "name": "Bandwidth_Hz",
       "label": "-3dB Bandwidth",
       "unit": "Hz",
       "optimize": "maximize",
-      "target_default": 1000000.0
+      "target_default": 10000000.0,
+      "valid_range": {
+        "min": 100000.0,
+        "max": 100000000.0
+      },
+      "description": "Closed-loop -3dB bandwidth"
     },
     {
       "name": "Phase_Margin_deg",
       "label": "Phase Margin",
       "unit": "°",
       "optimize": "maximize",
-      "target_default": 60.0
+      "target_default": 60.0,
+      "valid_range": {
+        "min": 30.0,
+        "max": 85.0
+      },
+      "description": "Stability margin - distance from 180° phase shift at unity loop gain"
     }
   ],
   "model": {
     "surrogate_path": "trained_models/transimpedance_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/transimpedance_amplifier/feature_scaler.pkl",
-    "trained_on": "2026-05-19",
-    "samples": 2000,
+    "trained_on": "2026-05-22",
+    "samples": 386,
     "r2_scores": {
-      "Transimpedance_dBOhm": 0.999481731682818,
-      "Bandwidth_Hz": 0.9961233669889795,
-      "Phase_Margin_deg": 0.40278936848220315
+      "Transimpedance_dBOhm": 0.999067660503647,
+      "Bandwidth_Hz": 0.9808108939583131,
+      "Phase_Margin_deg": 0.9726889411144928
     },
     "model_type": "random_forest",
     "log_metrics": []
+  },
+  "supply": {
+    "comment": "Op-amp assumed to have dual supply or single supply with virtual ground"
+  },
+  "fixed_components": {
+    "Cpd": {
+      "value": 1e-11,
+      "unit": "F",
+      "description": "Photodiode junction capacitance"
+    },
+    "op_amp_GBW": {
+      "value": 100000000.0,
+      "unit": "Hz",
+      "description": "Op-amp gain-bandwidth product"
+    },
+    "op_amp_A0": {
+      "value": 100000,
+      "unit": "V/V",
+      "description": "Op-amp DC open-loop gain"
+    }
+  },
+  "operating_point": {
+    "equations": {
+      "transimpedance": "R_f",
+      "transimpedance_dBOhm": "20 * log10(R_f)",
+      "feedback_zero": "1 / (2 * pi * R_f * C_f)",
+      "input_pole": "1 / (2 * pi * R_f * Cpd)",
+      "noise_gain_peak_freq": "sqrt(GBW / (2 * pi * R_f * Cpd))",
+      "closed_loop_BW_approx": "sqrt(GBW / (2 * pi * R_f * Cpd))"
+    },
+    "stability_requirements": {
+      "phase_margin_min": 45.0,
+      "comment": "For stability, feedback zero should be placed to compensate input pole"
+    }
+  },
+  "design_constraints": [
+    {
+      "name": "compensation_ratio",
+      "expression": "C_f >= sqrt(Cpd / (2 * pi * R_f * GBW))",
+      "description": "Minimum C_f for 45° phase margin (Q=0.707 critically damped)"
+    },
+    {
+      "name": "bandwidth_limit",
+      "expression": "BW < GBW / 10",
+      "description": "Closed-loop bandwidth should be well below op-amp GBW"
+    },
+    {
+      "name": "gain_bandwidth_tradeoff",
+      "expression": "R_f * BW < GBW",
+      "description": "Fundamental gain-bandwidth tradeoff limit"
+    }
+  ],
+  "validity_checks": {
+    "instability": {
+      "condition": "Phase_Margin_deg < 30.0",
+      "description": "Phase margin below 30° indicates potential instability or ringing"
+    },
+    "overcompensated": {
+      "condition": "Phase_Margin_deg > 85.0",
+      "description": "Excessive phase margin suggests over-compensation, wasting bandwidth"
+    },
+    "bandwidth_too_high": {
+      "condition": "Bandwidth_Hz > 500000000.0",
+      "description": "Bandwidth exceeding 500MHz (half of GBW) is physically unrealistic"
+    }
   }
 }

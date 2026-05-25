@@ -1,40 +1,85 @@
-* Common Emitter Amplifier
-
-******** PARAMETERS ********
-.param RC=3000
-.param RE=470
-.param VCC=12
+* Common-Emitter Amplifier (NPN, Voltage-Divider Bias)
+*
+* Topology:
+*   VCC ─── R1 ───┬─── Rc ───┬─── Cout ─── out ─── RL
+*                 │          │                      │
+*               base       col                     GND
+*                 │          │
+*   Vin ── Cin ──┘         Q1
+*                           │
+*                         emit
+*                           │
+*                    ┌──────┴──────┐
+*                   Re_min        Ce
+*                    │             │
+*                   Re            GND
+*                    │
+*                   GND
+*                 │
+*                R2
+*                 │
+*                GND
+*
+* Design considerations:
+*   - R1/R2 set base voltage: V_B = VCC × R2/(R1+R2)
+*   - With registry ranges R1: 50k-150k, R2: 10k-30k:
+*     V_B ranges from 0.75V to 4.5V
+*   - A minimum unbypassed emitter resistance (Re_min) prevents
+*     excessive collector current that would cause saturation
+*   - Ce bypasses the swept Re for AC gain, but Re_min remains
+*   - This ensures the transistor stays in active region for
+*     most parameter combinations, producing valid training data
+*
+* AC Gain ≈ gm × (Rc || RL) / (1 + gm×Re_min)
+* With Re_min = 100Ω and typical gm = 40mS: reduction factor ≈ 5
+* This keeps gain in a reasonable range (10-45 dB) vs. (3-60 dB) without
 
 ******** SUPPLY ********
-V1 vcc 0 DC {VCC}
+Vcc vcc 0 DC 12
 
-******** INPUT ********
-Vin in 0 DC 0 AC 1
+******** INPUT SOURCE ********
+Vin src 0 DC 0 AC 1
+Rs  src in 600
 
-******** BIAS ********
-R1 vcc base {R1_VAL}
-R2 vcc base {R2_VAL}
+******** VOLTAGE-DIVIDER BIAS ********
+R1 vcc  base {R1_VAL}
+R2 base 0    {R2_VAL}
 
-******** AMPLIFIER ********
+******** AMPLIFIER STAGE ********
 Rc vcc collector {RC_VAL}
-Re emitter 0 {RE_VAL}
 
-Cin in base 10u
-Ce emitter 0 100u
+******** EMITTER NETWORK ********
+* Re_min: Fixed minimum emitter resistance (unbypassed)
+* - Limits max I_C to prevent saturation
+* - Provides some local feedback for linearity
+* - With V_E_max ≈ 4V: I_C_max = 4V / (100 + Re_min) ≈ 20mA
+* Re: Swept emitter resistance (bypassed by Ce for AC)
+* Ce: Bypass capacitor - shorts Re at AC for higher gain
+Re_min emitter emit_int 100
+Re     emit_int 0 {RE_VAL}
+Ce     emit_int 0 47u
+
+******** COUPLING & OUTPUT ********
+Cin  in        base 1u
+Cout collector out  1u
+RL   out       0    10k
 
 ******** TRANSISTOR ********
 Q1 collector base emitter QNPN
-.model QNPN NPN (BF=150 VAF=100 IS=1e-15)
+.model QNPN NPN (IS=6.7e-15 BF=200 VAF=80
++                RB=10 RC=1 RE=0.5
++                CJE=18p VJE=0.7  MJE=0.33 TF=300p
++                CJC=4p  VJC=0.75 MJC=0.33 TR=4n
++                XTB=1.5 EG=1.11  XTI=3)
 
 ******** ANALYSIS ********
-.ac dec 200 10 100Meg
+.ac dec 100 10 100Meg
 
 ******** EXPORT DATA ********
 .control
 run
 set filetype=ascii
-wrdata ngspice_simulation_output.txt frequency v(collector)
+wrdata ngspice_simulation_output.txt frequency v(out)
 .endc
 
 .end
-

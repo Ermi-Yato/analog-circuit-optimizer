@@ -47,18 +47,64 @@ def _peak_gain_db(raw: dict, params: dict) -> float:
     return float(np.max(_gain_db_array(raw)))
 
 
+def _interpolate_crossing(freq: np.ndarray, gain_db: np.ndarray, 
+                           threshold: float, idx1: int, idx2: int) -> float:
+    """
+    Linear interpolation to find the exact frequency where gain crosses threshold.
+    idx1 and idx2 are adjacent indices bracketing the crossing.
+    """
+    f1, f2 = freq[idx1], freq[idx2]
+    g1, g2 = gain_db[idx1], gain_db[idx2]
+    
+    if abs(g2 - g1) < 1e-12:
+        return (f1 + f2) / 2.0
+    
+    # Linear interpolation: f = f1 + (threshold - g1) * (f2 - f1) / (g2 - g1)
+    f_cross = f1 + (threshold - g1) * (f2 - f1) / (g2 - g1)
+    return float(f_cross)
+
+
 def _bandwidth_hz(raw: dict, params: dict) -> float:
     """
     3dB bandwidth for an amplifier (bandpass-style):
-    BW = f_high - f_low  where both are within -3dB of peak gain.
+    BW = f_high - f_low where both are the -3dB frequencies.
+    
+    Uses linear interpolation to find the exact -3dB crossing frequencies
+    rather than snapping to the nearest frequency grid point. This reduces
+    quantization noise in the extracted bandwidth values.
+    
     Returns np.nan if the gain never drops 3dB within the sweep range.
     """
     gain_db = _gain_db_array(raw)
-    peak    = np.max(gain_db)
-    above   = np.where(gain_db >= peak - 3.0)[0]
+    freq = raw["freq"]
+    peak = np.max(gain_db)
+    threshold = peak - 3.0
+    
+    # Find all indices where gain is above threshold
+    above = np.where(gain_db >= threshold)[0]
     if len(above) == 0:
         return np.nan
-    bw = raw["freq"][above[-1]] - raw["freq"][above[0]]
+    
+    # Find the -3dB crossing points with interpolation
+    # Low-frequency side: find where gain rises to threshold
+    idx_low = above[0]
+    if idx_low > 0:
+        # Interpolate between idx_low-1 (below threshold) and idx_low (above threshold)
+        f_low = _interpolate_crossing(freq, gain_db, threshold, idx_low - 1, idx_low)
+    else:
+        # Gain is already above threshold at lowest frequency
+        f_low = freq[0]
+    
+    # High-frequency side: find where gain falls to threshold
+    idx_high = above[-1]
+    if idx_high < len(gain_db) - 1:
+        # Interpolate between idx_high (above threshold) and idx_high+1 (below threshold)
+        f_high = _interpolate_crossing(freq, gain_db, threshold, idx_high, idx_high + 1)
+    else:
+        # Gain is still above threshold at highest frequency
+        f_high = freq[-1]
+    
+    bw = f_high - f_low
     return float(bw) if bw > 0 else np.nan
 
 
@@ -66,15 +112,29 @@ def _cutoff_freq_hz(raw: dict, params: dict) -> float:
     """
     -3dB cutoff for a low-pass filter:
     The frequency where gain first drops 3dB below DC gain.
+    
+    Uses linear interpolation to find the exact -3dB crossing frequency
+    rather than snapping to the nearest frequency grid point.
     """
-    gain_db  = _gain_db_array(raw)
-    dc_gain  = gain_db[0]           # gain at lowest simulated frequency
-    target   = dc_gain - 3.0
-    below    = np.where(gain_db <= target)[0]
+    gain_db = _gain_db_array(raw)
+    freq = raw["freq"]
+    dc_gain = gain_db[0]  # gain at lowest simulated frequency
+    threshold = dc_gain - 3.0
+    
+    below = np.where(gain_db <= threshold)[0]
     if len(below) == 0:
         # Gain never drops 3dB — return the sweep upper limit
-        return float(raw["freq"][-1])
-    return float(raw["freq"][below[0]])
+        return float(freq[-1])
+    
+    idx_cross = below[0]
+    if idx_cross > 0:
+        # Interpolate between idx_cross-1 (above threshold) and idx_cross (below threshold)
+        f_cutoff = _interpolate_crossing(freq, gain_db, threshold, idx_cross - 1, idx_cross)
+    else:
+        # Already below threshold at lowest frequency (unusual)
+        f_cutoff = freq[0]
+    
+    return float(f_cutoff)
 
 
 def _q_factor(raw: dict, params: dict) -> float:
@@ -100,21 +160,73 @@ def _transimpedance_dbohm(raw: dict, params: dict) -> float:
     return _peak_gain_db(raw, params)  # same formula since Iin = 1A AC
 
 
-def _phase_at_bw(raw: dict, params: dict) -> float:
+def _phase_margin_tia(raw: dict, params: dict) -> float:
     """
-    Phase angle at the -3dB bandwidth frequency (proxy for phase margin).
-    Phase margin ≈ 180° + phase_at_unity_gain; here we use the -3dB freq
-    as a practical approximation accessible from closed-loop simulation.
+    Analytical phase margin calculation for transimpedance amplifier.
+    
+    For a TIA with feedback Rf||Cf and photodiode capacitance Cpd, the
+    closed-loop response is a second-order system characterized by:
+    
+    Quality factor Q = (1/Cf) × sqrt(Cpd / (2π × Rf × GBW))
+    Damping ratio ζ = 1 / (2Q)
+    
+    Phase margin is related to damping ratio by:
+    PM = arctan(2ζ / sqrt(sqrt(1 + 4ζ⁴) - 2ζ²))
+    
+    For practical ranges:
+    - Q ≈ 0.5 (ζ ≈ 1.0)   → PM ≈ 76° (overdamped)
+    - Q ≈ 0.707 (ζ ≈ 0.707) → PM ≈ 65° (critically damped, Butterworth)
+    - Q ≈ 1.0 (ζ ≈ 0.5)   → PM ≈ 52° (slightly underdamped)
+    - Q ≈ 1.3 (ζ ≈ 0.38)  → PM ≈ 45° 
+    - Q ≈ 2.0 (ζ ≈ 0.25)  → PM ≈ 30° (underdamped, marginal stability)
+    
+    Fixed circuit parameters (from transimpedance_amplifier.json):
+    - Cpd = 10pF (photodiode junction capacitance)
+    - GBW = 100MHz (op-amp gain-bandwidth product)
     """
-    gain_db  = _gain_db_array(raw)
-    peak     = np.max(gain_db)
-    above    = np.where(gain_db >= peak - 3.0)[0]
-    if len(above) == 0:
+    # Extract variable parameters
+    Rf = params.get("R_f")
+    Cf = params.get("C_f")
+    
+    if Rf is None or Cf is None:
         return np.nan
-    bw_idx   = above[-1]
-    phase    = float(np.degrees(np.arctan2(raw["imag"][bw_idx], raw["real"][bw_idx])))
-    # Phase margin approximation: 180° + phase_at_bw (phase is negative for lag)
-    return 180.0 + phase
+    
+    # Fixed parameters for TIA (from registry fixed_components)
+    Cpd = 10e-12   # 10pF photodiode capacitance
+    GBW = 100e6    # 100MHz op-amp GBW
+    
+    # Calculate quality factor Q
+    # Q = (1/Cf) × sqrt(Cpd / (2π × Rf × GBW))
+    denominator = 2 * math.pi * Rf * GBW
+    if denominator <= 0:
+        return np.nan
+    
+    Q = (1.0 / Cf) * math.sqrt(Cpd / denominator)
+    
+    # Calculate damping ratio ζ = 1/(2Q)
+    if Q <= 0:
+        return np.nan
+    zeta = 1.0 / (2.0 * Q)
+    
+    # Calculate phase margin using exact formula:
+    # PM = arctan(2ζ / sqrt(sqrt(1 + 4ζ⁴) - 2ζ²))
+    zeta_sq = zeta * zeta
+    zeta_4th = zeta_sq * zeta_sq
+    
+    inner = math.sqrt(1.0 + 4.0 * zeta_4th) - 2.0 * zeta_sq
+    
+    # Handle edge cases where inner could be negative or zero
+    if inner <= 0:
+        # Very high damping ratio - system is heavily overdamped
+        # Phase margin approaches 90°
+        return 90.0
+    
+    argument = 2.0 * zeta / math.sqrt(inner)
+    phase_margin = math.degrees(math.atan(argument))
+    
+    # Clamp to reasonable range [0, 90] for this formula
+    # (PM > 90° means heavily overdamped, effectively very stable)
+    return float(max(0.0, min(90.0, phase_margin)))
 
 
 def _output_swing_v(raw: dict, params: dict) -> float:
@@ -195,7 +307,7 @@ _EXTRACTORS: dict[str, Callable] = {
     "Bandwidth_Hz":          _bandwidth_hz,
     "Cutoff_Freq_Hz":        _cutoff_freq_hz,
     "Q_factor":              _q_factor,
-    "Phase_Margin_deg":      _phase_at_bw,
+    "Phase_Margin_deg":      _phase_margin_tia,
     "Output_Swing_V":        _output_swing_v,
     "THD_percent":           _thd_percent,
     "Efficiency_percent":    _efficiency_percent,
@@ -211,7 +323,7 @@ _PATTERN_FALLBACKS: list[tuple[str, str | None, Callable]] = [
     ("_hz",       "ac",        _bandwidth_hz),
     ("freq",      "ac",        _cutoff_freq_hz),
     ("cutoff",    "ac",        _cutoff_freq_hz),
-    ("phase",     "ac",        _phase_at_bw),
+    ("phase",     "ac",        _phase_margin_tia),
     ("impedance", "ac",        _transimpedance_dbohm),
     # Transient patterns
     ("swing",     "transient", _output_swing_v),
@@ -310,6 +422,113 @@ def _extract_metrics(
 
 
 # ---------------------------------------------------------------------------
+# Validity checking
+# ---------------------------------------------------------------------------
+
+def _check_metric_ranges(metrics: dict, metric_defs: list[dict]) -> str | None:
+    """
+    Check if all metrics are within their valid_range bounds.
+    Returns None if valid, or a reason string if invalid.
+    """
+    for m_def in metric_defs:
+        name = m_def["name"]
+        if name not in metrics:
+            continue
+        value = metrics[name]
+        valid_range = m_def.get("valid_range")
+        if valid_range is None:
+            continue
+        
+        min_val = valid_range.get("min")
+        max_val = valid_range.get("max")
+        
+        if min_val is not None and value < min_val:
+            return f"{name}={value:.4g} below valid min {min_val}"
+        if max_val is not None and value > max_val:
+            return f"{name}={value:.4g} above valid max {max_val}"
+    
+    return None
+
+
+def _check_validity_rules(metrics: dict, validity_checks: dict | None) -> str | None:
+    """
+    Check metrics against validity_checks rules from registry.
+    Each rule has a 'condition' that when True indicates INVALID data.
+    
+    Supports simple comparisons like:
+      - "Peak_Gain_dB < 5.0"
+      - "Q_factor > 10.0"
+      - "Phase_Margin_deg < 30.0"
+      - "Output_Swing_V < 2.0 AND THD_percent > 40.0"
+    
+    Returns None if valid, or the check name + description if invalid.
+    """
+    if not validity_checks:
+        return None
+    
+    for check_name, check_def in validity_checks.items():
+        condition = check_def.get("condition", "")
+        description = check_def.get("description", check_name)
+        
+        try:
+            # Parse and evaluate the condition
+            if _evaluate_condition(condition, metrics):
+                return f"{check_name}: {description}"
+        except Exception:
+            # If condition can't be evaluated, skip it
+            continue
+    
+    return None
+
+
+def _evaluate_condition(condition: str, metrics: dict) -> bool:
+    """
+    Evaluate a simple condition string against metric values.
+    Supports: <, >, <=, >=, ==, AND, OR
+    Returns True if the condition matches (i.e., data is INVALID).
+    """
+    if not condition.strip():
+        return False
+    
+    # Handle AND/OR
+    if " AND " in condition:
+        parts = condition.split(" AND ")
+        return all(_evaluate_condition(p.strip(), metrics) for p in parts)
+    if " OR " in condition:
+        parts = condition.split(" OR ")
+        return any(_evaluate_condition(p.strip(), metrics) for p in parts)
+    
+    # Parse comparison: "metric_name op value"
+    import re
+    match = re.match(r'(\w+)\s*([<>=!]+)\s*([\d.eE+-]+)', condition.strip())
+    if not match:
+        return False
+    
+    metric_name, op, value_str = match.groups()
+    
+    if metric_name not in metrics:
+        return False
+    
+    metric_val = metrics[metric_name]
+    threshold = float(value_str)
+    
+    if op == "<":
+        return metric_val < threshold
+    elif op == ">":
+        return metric_val > threshold
+    elif op == "<=":
+        return metric_val <= threshold
+    elif op == ">=":
+        return metric_val >= threshold
+    elif op == "==" or op == "=":
+        return abs(metric_val - threshold) < 1e-9
+    elif op == "!=" or op == "<>":
+        return abs(metric_val - threshold) >= 1e-9
+    
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -320,6 +539,7 @@ def generate(
     max_workers: int | None = None,
     seed: int | None = None,
     verbose: bool = True,
+    filter_invalid: bool = True,
 ) -> pd.DataFrame:
     """
     Generate a simulation dataset for a circuit.
@@ -332,10 +552,12 @@ def generate(
         max_workers:       Parallel worker count (default: ThreadPoolExecutor default).
         seed:              Random seed for reproducibility.
         verbose:           Print progress summary and dataset stats when done.
+        filter_invalid:    If True, filter out rows that fail validity checks
+                           defined in the circuit registry (saturation, clipping, etc.)
 
     Returns:
         DataFrame with columns [param1, param2, ..., metric1, metric2, ...]
-        Rows with failed simulations are dropped.
+        Rows with failed simulations or invalid metrics are dropped.
         Also saved to data/<circuit_id>_dataset.csv.
     """
     circuit      = reg.get(circuit_id)
@@ -344,6 +566,9 @@ def generate(
     metric_names = [m["name"] for m in metric_defs]
     param_names  = [p["name"] for p in param_defs]
     sim_type     = circuit.get("simulation_type", "ac")
+    
+    # Get validity checking configuration from registry
+    validity_checks = circuit.get("validity_checks")
 
     # Read SPICE template
     template_path = os.path.join(_PROJECT_ROOT, circuit["spice_template"])
@@ -360,6 +585,7 @@ def generate(
         print(f"  Metrics    : {metric_names}")
         print(f"  Samples    : {n_samples}")
         print(f"  Workers    : {max_workers or 'auto'}")
+        print(f"  Validity   : {'enabled' if filter_invalid else 'disabled'}")
         print()
 
     # Run simulations in parallel
@@ -388,7 +614,11 @@ def generate(
     rows = []
     failed_sim = 0
     failed_nan = 0
+    failed_validity = 0
+    failed_range = 0
     failed_extract: dict[str, int] = {}
+    validity_reasons: dict[str, int] = {}
+    
     for params, raw in zip(param_sets, raw_results):
         if raw is None:
             failed_sim += 1
@@ -402,11 +632,28 @@ def generate(
         if any(math.isnan(v) for v in metrics.values() if isinstance(v, float)):
             failed_nan += 1
             continue
+        
+        # Validity filtering (if enabled)
+        if filter_invalid:
+            # Check metric valid_range bounds
+            range_reason = _check_metric_ranges(metrics, metric_defs)
+            if range_reason:
+                failed_range += 1
+                validity_reasons[range_reason] = validity_reasons.get(range_reason, 0) + 1
+                continue
+            
+            # Check validity rules (saturation, clipping, instability, etc.)
+            validity_reason = _check_validity_rules(metrics, validity_checks)
+            if validity_reason:
+                failed_validity += 1
+                validity_reasons[validity_reason] = validity_reasons.get(validity_reason, 0) + 1
+                continue
+        
         row = {name: params[name] for name in param_names}
         row.update(metrics)
         rows.append(row)
 
-    failed = failed_sim + failed_nan + sum(failed_extract.values())
+    failed = failed_sim + failed_nan + failed_validity + failed_range + sum(failed_extract.values())
 
     df = pd.DataFrame(rows, columns=param_names + metric_names)
 
@@ -421,10 +668,18 @@ def generate(
         if failed_sim:
             print(f"  Sim errors : {failed_sim} (ngspice returned no output)")
         if failed_nan:
-            print(f"  NaN rows   : {failed_nan} (metric returned NaN, row dropped)")
+            print(f"  NaN rows   : {failed_nan} (metric returned NaN)")
+        if failed_range:
+            print(f"  Out of range: {failed_range} (metric outside valid_range)")
+        if failed_validity:
+            print(f"  Invalid    : {failed_validity} (failed validity_checks)")
         for reason, count in failed_extract.items():
             print(f"  Extract err: {count}x — {reason}")
-        print(f"  Saved to   : {out_path}")
+        if validity_reasons and verbose:
+            print(f"\n  Validity rejection breakdown:")
+            for reason, count in sorted(validity_reasons.items(), key=lambda x: -x[1])[:5]:
+                print(f"    {count}x — {reason}")
+        print(f"\n  Saved to   : {out_path}")
         print()
         if len(df) > 0:
             print(preview(df))

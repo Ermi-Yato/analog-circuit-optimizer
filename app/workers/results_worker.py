@@ -27,7 +27,7 @@ class ResultsWorker(QThread):
             from sklearn.model_selection import train_test_split
 
             import registry.circuit_registry as reg
-            from core.dataset.preprocessor import load_csv, fit_transform
+            from core.dataset.preprocessor import load_csv, fit_transform, add_derived_features
             from core.models.trainer import load_model
 
             _ROOT = os.path.dirname(
@@ -60,12 +60,16 @@ class ResultsWorker(QThread):
                     if col in df.columns:
                         df[col] = np.log10(df[col].clip(lower=1e-300))
 
+            # Add physics-informed derived features (must match trainer's preprocessing)
+            df, derived_features = add_derived_features(df, self._circuit_id)
+            feature_names = param_names + derived_features
+
             # Fit-transform to get correctly scaled targets (y)
-            X_scaled, y, _ = fit_transform(df, param_names, metric_names)
+            X_scaled, y, _ = fit_transform(df, feature_names, metric_names)
 
             # Use the saved scaler (fitted in log-space) for feature scaling
             scaler   = joblib.load(scaler_path)
-            X_scaled = scaler.transform(df[param_names].values)
+            X_scaled = scaler.transform(df[feature_names].values)
 
             _, X_test, _, y_test = train_test_split(
                 X_scaled, y, test_size=0.2, random_state=42
