@@ -116,12 +116,12 @@ class _CircuitCard(QFrame):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 16)
-        root.setSpacing(10)
+        root.setSpacing(12)
 
         # Row 1: name + sim chip
         row1 = QHBoxLayout()
         name_lbl = QLabel(circuit["name"])
-        name_lbl.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        name_lbl.setFont(QFont("Helvetica", 12, QFont.Weight.Bold))
         name_lbl.setStyleSheet(f"color: {TEXT}; background: transparent; border: none;")
         row1.addWidget(name_lbl, 1)
 
@@ -138,12 +138,16 @@ class _CircuitCard(QFrame):
         desc = circuit.get("description", "")
         if desc:
             dl = QLabel(desc[:80] + ("..." if len(desc) > 80 else ""))
-            dl.setStyleSheet(f"color: {TEXT_S}; font-size: 11px; background: transparent; border: none;")
+            dl.setStyleSheet(f"color: {TEXT_S}; font-size: 14px; background: transparent; border: none;")
+            dl.setFont(QFont("Helvetica"))
             dl.setWordWrap(True)
             root.addWidget(dl)
 
         # Row 3: pipeline status bar
-        root.addWidget(_PipelineBar(has_data, has_model))
+        # Ensure the pipeline bar doesn't inherit global borders
+        pipeline_bar = _PipelineBar(has_data, has_model)
+        pipeline_bar.setStyleSheet("background: transparent; border: none;")
+        root.addWidget(pipeline_bar)
 
         # Row 4: R² scores if trained
         model_block = circuit.get("model") or {}
@@ -151,11 +155,22 @@ class _CircuitCard(QFrame):
         valid_r2 = {k: v for k, v in r2_scores.items() if isinstance(v, (int, float))}
         if has_model and valid_r2:
             sr = QHBoxLayout()
+            sr.setContentsMargins(4, 4, 4, 2)
             sr.setSpacing(14)
             for metric, r2 in list(valid_r2.items())[:3]:
                 clr = GREEN if r2 >= 0.95 else (YELLOW if r2 >= 0.80 else RED)
                 lbl = QLabel(f"{metric.replace('_', ' ')}: R²={r2:.3f}")
-                lbl.setStyleSheet(f"color: {clr}; font-size: 10px; background: transparent; border: none;")
+                # Added border: none and padding to clear out box outlines
+                lbl.setStyleSheet(f"""
+                    color: {clr}; 
+                    font-size: 11px; 
+                    background: transparent; 
+                    border: none;
+                    padding: 0px;
+                    margin: 0px;
+                """)
+                lbl.setFont(QFont("Helvetica"))
+
                 sr.addWidget(lbl)
             sr.addStretch()
             root.addLayout(sr)
@@ -172,6 +187,8 @@ class _CircuitCard(QFrame):
             f"font-size: 11px; text-decoration: underline; padding: 0; }}"
             f"QPushButton:hover {{ color: {TEXT_S}; }}"
         )
+        details_btn.setFont(QFont("Helvetica"))
+
         details_btn.clicked.connect(lambda: navigate_cb(1, cid))
         bottom.addWidget(details_btn)
         bottom.addStretch()
@@ -186,6 +203,8 @@ class _CircuitCard(QFrame):
             f"border-radius: 6px; font-size: 11px; font-weight: 700; padding: 0 14px; }}"
             f"QPushButton:hover {{ opacity: 0.85; }}"
         )
+        cta.setFont(QFont("Helvetica"))
+
         cta.clicked.connect(lambda: navigate_cb(nav_idx, cid))
         bottom.addWidget(cta)
         root.addLayout(bottom)
@@ -212,7 +231,7 @@ class _AddCard(QFrame):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         plus = QLabel("+")
-        plus.setFont(QFont("Segoe UI", 24))
+        plus.setFont(QFont("Helvetica", 24))
         plus.setAlignment(Qt.AlignmentFlag.AlignCenter)
         plus.setStyleSheet(f"color: {TEXT_D}; background: transparent; border: none;")
 
@@ -289,7 +308,7 @@ class DashboardView(QWidget):
         txt = QVBoxLayout()
         txt.setSpacing(3)
         title = QLabel("Analog Circuits Optimization using ML")
-        title.setFont(QFont("Segoe UI", 26, QFont.Weight.Bold))
+        title.setFont(QFont("Helvetica", 26, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {TEXT};")
         sub = QLabel("ML-Assisted Analog Circuit Optimizer. Set a target, get component values.")
         sub.setStyleSheet(f"color: {TEXT_S}; font-size: 14px;")
@@ -333,7 +352,7 @@ class DashboardView(QWidget):
         # Header row
         hdr_row = QHBoxLayout()
         hdr = QLabel("Circuits")
-        hdr.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        hdr.setFont(QFont("Helvetica", 15, QFont.Weight.Bold))
         hdr.setStyleSheet(f"color: {TEXT};")
         hdr_row.addWidget(hdr, 1)
         vbox.addLayout(hdr_row)

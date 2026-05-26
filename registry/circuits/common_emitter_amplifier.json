@@ -75,7 +75,7 @@
   "model": {
     "surrogate_path": "trained_models/common_emitter_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/common_emitter_amplifier/feature_scaler.pkl",
-    "trained_on": "2026-05-26",
+    "trained_on": "2026-05-27",
     "samples": 5462,
     "r2_scores": {
       "Peak_Gain_dB": 0.9521463258961363,

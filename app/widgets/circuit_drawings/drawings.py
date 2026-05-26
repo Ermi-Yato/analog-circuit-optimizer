@@ -59,39 +59,61 @@ def _finish(d: schemdraw.Drawing, title: str) -> matplotlib.figure.Figure:
 def _draw_common_emitter_amplifier() -> matplotlib.figure.Figure:
     d = _make_drawing()
 
-    # VCC line at top
-    vcc = d.add(elm.Dot().at((3, 6)).color(_FG))
-    d.add(elm.Line().left(1).color(_FG))
-    d.add(elm.Resistor().down(3).label("R1", loc="right").color(_FG))
+    # 1. Establish a single, clean VCC Power Rail at the top
+    vcc_node = d.add(elm.Dot().at((2, 6.5)).color(_FG))
+    d.add(elm.Label().at(vcc_node.start).label("VCC", loc="top", color=_BLUE))
+    
+    # Draw horizontal rail extension to the right for Rc
+    rail_line = d.add(elm.Line().right(2.5).at(vcc_node.start).color(_FG))
+    rc_top_node = d.add(elm.Dot().color(_FG))
+
+    # 2. Left Branch: Bias Voltage Divider (Labels moved left to prevent collisions)
+    r1 = d.add(elm.Resistor().down(2.5).at(vcc_node.start).label("R1", loc="left").color(_FG))
     base_node = d.add(elm.Dot().color(_FG))
-    d.add(elm.Resistor().down(2.5).label("R2", loc="right").color(_FG))
+    d.add(elm.Resistor().down(2.5).at(base_node.start).label("R2", loc="left").color(_FG))
     d.add(elm.Ground().color(_FG))
 
-    # BJT
-    d.add(elm.Line().right(1.5).at(base_node.end).color(_FG))
+    # 3. Input path (matches SPICE: Vin -> Rs -> Cin -> base)
+    d.add(elm.Capacitor().left(1.4).at(base_node.start).label("Cin", loc="top").color(_FG))
+    cin_left = d.add(elm.Dot().color(_FG))
+    d.add(elm.Resistor().left(1.2).at(cin_left.start).label("Rs", loc="top").color(_FG))
+    vin_node = d.add(elm.Dot().color(_FG))
+    d.add(elm.Label().at(vin_node.start).label("Vin", loc="left", color=_SUB))
+
+    # 4. Transistor Interconnection
+    d.add(elm.Line().right(1.2).at(base_node.start).color(_FG))
     Q = d.add(elm.BjtNpn(circle=True).anchor("base").color(_FG))
     d.add(elm.Dot().at(Q.base).color(_FG))
 
-    # Collector resistor to VCC
-    d.add(elm.Resistor().up(2.5).at(Q.collector).label("Rc", loc="right").color(_FG))
-    d.add(elm.Line().left().tox(3).color(_FG))
-    d.add(elm.Dot().at((3, 6)).color(_FG))
-    d.add(elm.Label().at((3, 6.3)).label("VCC", color=_BLUE))
+    # 5. Collector Branch (Drops cleanly from the right side of the VCC rail)
+    rc = d.add(elm.Resistor().down(2.5).at(rc_top_node.start).to(Q.collector).label("Rc", loc="right").color(_FG))
+    coll_node = d.add(elm.Dot().at(Q.collector).color(_FG))
 
-    # Emitter resistor to GND
-    d.add(elm.Resistor().down(2).at(Q.emitter).label("Re", loc="right").color(_FG))
+    # 6. Output Branch & Separated Labels
+    d.add(elm.Line().right(1.2).at(coll_node.start).color(_FG))
+    out_node = d.add(elm.Dot().color(_FG))
+    d.add(elm.Capacitor().right(1.5).at(out_node.start).label("Cout", loc="top").color(_FG))
+    out_terminal = d.add(elm.Dot().color(_FG))
+    
+    # Offset Vout label cleanly to the right side of the node terminal
+    d.add(elm.Label().at(out_terminal.start).label("Vout", loc="right", color=_SUB))
+    
+    # Drop RL down from the node with its label cleanly on the left side
+    d.add(elm.Resistor().down(2.5).at(out_terminal.start).label("RL", loc="left").color(_FG))
     d.add(elm.Ground().color(_FG))
 
-    # Input (left side, coupling cap)
-    d.add(elm.Capacitor().left(1.5).at(Q.base).label("Cin", loc="top").color(_FG))
-    d.add(elm.Dot().color(_FG))
-    d.add(elm.Label().label("Vin", color=_SUB))
+    # 7. Emitter Network transformation (Shifted labels downwards to stop BJT overlap)
+    re_min = d.add(elm.Resistor().down(1.5).at(Q.emitter).label("Re_min", loc="right").color(_FG))
+    emit_int = d.add(elm.Dot().color(_FG))
 
-    # Output (right side of collector)
-    d.add(elm.Line().right(0.8).at(Q.collector).color(_FG))
-    out_n = d.add(elm.Dot().color(_FG))
-    d.add(elm.Capacitor().right(1.2).at(out_n.end).label("Cout", loc="top").color(_FG))
-    d.add(elm.Label().label("Vout", color=_SUB))
+    # Swept Re Branch
+    d.add(elm.Resistor().down(1.5).at(emit_int.start).label("Re", loc="right").color(_FG))
+    d.add(elm.Ground().color(_FG))
+
+    # Ce Bypass Capacitor Branch
+    d.add(elm.Line().right(1.0).at(emit_int.start).color(_FG))
+    d.add(elm.Capacitor().down(1.5).label("Ce", loc="right").color(_FG))
+    d.add(elm.Ground().color(_FG))
 
     return _finish(d, "Common-Emitter Amplifier")
 
@@ -101,41 +123,78 @@ def _draw_common_emitter_amplifier() -> matplotlib.figure.Figure:
 def _draw_differential_amplifier() -> matplotlib.figure.Figure:
     d = _make_drawing()
 
-    # Q1 (left BJT)
-    Q1 = d.add(elm.BjtNpn(circle=True).at((1.5, 3)).color(_FG))
-    # Q2 (right BJT)
-    Q2 = d.add(elm.BjtNpn(circle=True).at((4.5, 3)).color(_FG))
+    # Top VCC rail
+    d.add(elm.Line().at((1.0, 8.0)).right(10.0).color(_FG))
+    d.add(elm.Label().at((6.0, 8.0)).label("VCC", loc="top", color=_BLUE))
 
-    # Collector resistors to VCC
-    d.add(elm.Resistor().up(2).at(Q1.collector).label("R_L", loc="right").color(_FG))
-    rl1_top = d.add(elm.Dot().color(_FG))
-    d.add(elm.Resistor().up(2).at(Q2.collector).label("R_L", loc="right").color(_FG))
-    rl2_top = d.add(elm.Dot().color(_FG))
+    # Differential pair transistors
+    q1 = d.add(elm.BjtNpn(circle=True).at((4.0, 4.2)).color(_FG))
+    q2 = d.add(elm.BjtNpn(circle=True).at((8.0, 4.2)).color(_FG))
 
-    # VCC rail connecting both collector loads
-    d.add(elm.Line().right().at(rl1_top.end).tox(rl2_top.end).color(_FG))
-    vcc_x = (rl1_top.end[0] + rl2_top.end[0]) / 2
-    d.add(elm.Label().at((vcc_x, rl1_top.end[1] + 0.3)).label("VCC", color=_BLUE))
+    # Collector loads to VCC
+    d.add(elm.Resistor().down(3.0).at((4.0, 8.0)).to(q1.collector).label("RL1", loc="left").color(_FG))
+    d.add(elm.Resistor().down(3.0).at((8.0, 8.0)).to(q2.collector).label("RL2", loc="right").color(_FG))
 
-    # Emitter connection to tail
-    e_y = Q1.emitter[1]
-    d.add(elm.Line().right().at(Q1.emitter).tox(Q2.emitter).color(_FG))
-    mid_e = ((Q1.emitter[0] + Q2.emitter[0]) / 2, e_y)
-    d.add(elm.Dot().at(mid_e).color(_FG))
-    d.add(elm.Resistor().down(2).at(mid_e).label("R_tail", loc="right").color(_FG))
+    # Output branch: col1 -> Cout -> Vout -> Rload
+    d.add(elm.Line().right(1.0).at(q1.collector).color(_FG))
+    d.add(elm.Capacitor().right(1.6).label("Cout", loc="top").color(_FG))
+    vout = d.add(elm.Dot().color(_FG))
+    d.add(elm.Label().at(vout.start).label("Vout", loc="right", color=_SUB))
+    d.add(elm.Resistor().down(2.0).at(vout.start).label("Rload", loc="left").color(_FG))
     d.add(elm.Ground().color(_FG))
 
-    # Inputs
-    d.add(elm.Line().left(1.2).at(Q1.base).color(_FG))
-    d.add(elm.Label().label("Vin+", color=_SUB))
-    d.add(elm.Line().left(1.2).at(Q2.base).color(_FG))
-    d.add(elm.Label().label("Vin−", color=_SUB))
+    # Left input/bias network
+    b1 = d.add(elm.Dot().at(q1.base).color(_FG))
+    d.add(elm.Resistor().up(2.2).at(b1.start).label("Rb1_q1", loc="left").color(_FG))
+    d.add(elm.Line().right(0.4).color(_FG))
+    d.add(elm.Resistor().down(2.0).at(b1.start).label("Rb2_q1", loc="left").color(_FG))
+    d.add(elm.Ground().color(_FG))
+    d.add(elm.Capacitor().left(1.2).at(b1.start).label("Cin_p", loc="top").color(_FG))
+    d.add(elm.Resistor().left(1.2).label("Rs_p", loc="top").color(_FG))
+    d.add(elm.Label().label("Vin+", loc="left", color=_SUB))
 
-    # Outputs
-    d.add(elm.Line().right(0.8).at(Q1.collector).color(_FG))
-    d.add(elm.Label().label("Vout+", color=_SUB))
-    d.add(elm.Line().right(0.8).at(Q2.collector).color(_FG))
-    d.add(elm.Label().label("Vout−", color=_SUB))
+    # Right input/bias network
+    b2 = d.add(elm.Dot().at(q2.base).color(_FG))
+    d.add(elm.Resistor().up(2.2).at(b2.start).label("Rb1_q2", loc="right").color(_FG))
+    d.add(elm.Line().left(0.4).color(_FG))
+    d.add(elm.Resistor().down(2.0).at(b2.start).label("Rb2_q2", loc="right").color(_FG))
+    d.add(elm.Ground().color(_FG))
+    d.add(elm.Capacitor().right(1.2).at(b2.start).label("Cin_n", loc="top").color(_FG))
+    d.add(elm.Resistor().right(1.2).label("Rs_n", loc="top").color(_FG))
+    d.add(elm.Label().label("Vin−", loc="right", color=_SUB))
+
+    # Tail bus
+    tail_x, tail_y = 6.0, 1.6
+    d.add(elm.Line().at((4.8, tail_y)).to((7.2, tail_y)).color(_FG))
+    tail = d.add(elm.Dot().at((tail_x, tail_y)).color(_FG))
+    d.add(elm.Label().at(tail.start).label("tail", loc="top", color=_SUB))
+
+    # Left emitter to tail: RE1 || Ce1
+    d.add(elm.Line().left(0.5).at(q1.emitter).color(_FG))
+    d.add(elm.Resistor().down(2.0).label("RE1", loc="left").color(_FG))
+    d.add(elm.Line().right(1.3).color(_FG))
+    d.add(elm.Line().to((tail_x, tail_y)).color(_FG))
+
+    d.add(elm.Line().right(0.5).at(q1.emitter).color(_FG))
+    d.add(elm.Capacitor().down(2.0).label("Ce1", loc="right").color(_FG))
+    d.add(elm.Line().left(0.3).color(_FG))
+    d.add(elm.Line().to((tail_x, tail_y)).color(_FG))
+
+    # Right emitter to tail: RE2 || Ce2
+    d.add(elm.Line().right(0.5).at(q2.emitter).color(_FG))
+    d.add(elm.Resistor().down(2.0).label("RE2", loc="right").color(_FG))
+    d.add(elm.Line().left(1.3).color(_FG))
+    d.add(elm.Line().to((tail_x, tail_y)).color(_FG))
+
+    d.add(elm.Line().left(0.5).at(q2.emitter).color(_FG))
+    d.add(elm.Capacitor().down(2.0).label("Ce2", loc="left").color(_FG))
+    d.add(elm.Line().right(0.3).color(_FG))
+    d.add(elm.Line().to((tail_x, tail_y)).color(_FG))
+
+    # Tail resistor to VEE
+    d.add(elm.Resistor().down(1.8).at((tail_x, tail_y)).label("R_tail", loc="right").color(_FG))
+    vee = d.add(elm.Dot().color(_FG))
+    d.add(elm.Label().at(vee.start).label("VEE", loc="bottom", color=_BLUE))
 
     return _finish(d, "Differential Amplifier (Long-Tail Pair)")
 
@@ -203,6 +262,10 @@ def _draw_transimpedance_amplifier() -> matplotlib.figure.Figure:
     inv_node = d.add(elm.Dot().color(_FG))
     d.add(elm.SourceI().down(2).at(inv_node.end).label("I_PD", loc="right").color(_FG))
     d.add(elm.Ground().color(_FG))
+    # Photodiode junction capacitance to ground (Cpd in SPICE)
+    d.add(elm.Line().left(0.9).at(inv_node.end).color(_FG))
+    d.add(elm.Capacitor().down(1.3).label("Cpd", loc="left").color(_FG))
+    d.add(elm.Ground().color(_FG))
 
     # Feedback: Rf || Cf from output to inverting input
     fb_start_x = op.out[0]
@@ -256,8 +319,11 @@ def _draw_class_a_amplifier() -> matplotlib.figure.Figure:
     d.add(elm.Line().left().tox(3).color(_FG))
     d.add(elm.Dot().at((3, 6)).color(_FG))
 
-    # Emitter degeneration
+    # Emitter degeneration + bypass capacitor (matches Remitter || Ce in SPICE)
     d.add(elm.Resistor().down(2).at(Q.emitter).label("R_emitter", loc="right").color(_FG))
+    d.add(elm.Ground().color(_FG))
+    d.add(elm.Line().right(1.0).at(Q.emitter).color(_FG))
+    d.add(elm.Capacitor().down(2).label("Ce", loc="right").color(_FG))
     d.add(elm.Ground().color(_FG))
 
     # Input coupling cap
@@ -268,7 +334,7 @@ def _draw_class_a_amplifier() -> matplotlib.figure.Figure:
     d.add(elm.Line().right(0.8).at(Q.collector).color(_FG))
     cout_n = d.add(elm.Dot().color(_FG))
     d.add(elm.Capacitor().right(1.2).at(cout_n.end).label("Cout", loc="top").color(_FG))
-    d.add(elm.Resistor().down(2).label("R_L", loc="right").color(_FG))
+    d.add(elm.Resistor().down(2).label("RL_ext", loc="right").color(_FG))
     d.add(elm.Ground().color(_FG))
     d.add(elm.Label().at(cout_n.end).label("Vout", color=_SUB))
 

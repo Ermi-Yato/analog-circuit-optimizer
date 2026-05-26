@@ -97,7 +97,7 @@ class ResultsWorker(QThread):
                 "y_test":              y_test,
                 "y_pred":              y_pred,
                 "metric_names":        metric_names,
-                "param_names":         param_names,
+                "param_names":         feature_names,  # includes derived features for importance chart
                 "feature_importances": getattr(model, "feature_importances", None),
             })
 

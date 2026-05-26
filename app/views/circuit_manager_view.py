@@ -129,16 +129,18 @@ class _CircuitListItem(QWidget):
         layout.setSpacing(8)
 
         name = QLabel(circuit["name"])
-        name.setFont(QFont("Segoe UI", 10))
+        name.setFont(QFont("Helvetica", 12))
         name.setStyleSheet(f"color: {TEXT}; background: transparent;")
         layout.addWidget(name, stretch=1)
 
         if reg.model_exists(circuit["id"]):
             dot = QLabel("● Trained")
-            dot.setStyleSheet(f"color: {GREEN}; font-size: 10px; background: transparent;")
+            dot.setStyleSheet(f"color: {GREEN}; font-size: 11px; background: transparent;")
+            name.setFont(QFont("Helvetica"))
         else:
             dot = QLabel("● Untrained")
-            dot.setStyleSheet(f"color: {RED}; font-size: 10px; background: transparent;")
+            dot.setStyleSheet(f"color: {RED}; font-size: 11px; background: transparent;")
+            name.setFont(QFont("Helvetica"))
         layout.addWidget(dot)
 
 
@@ -1029,7 +1031,7 @@ class CircuitManagerView(QWidget):
         hl = QHBoxLayout(header)
         hl.setContentsMargins(16, 0, 16, 0)
         title = QLabel("Circuits")
-        title.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        title.setFont(QFont("Helvetica", 13, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {TEXT};")
         hl.addWidget(title)
         layout.addWidget(header)

@@ -74,21 +74,33 @@ def input_ss(extra_widgets: str = "QComboBox, QDoubleSpinBox, QSpinBox") -> str:
             padding: 0 10px; font-size: 12px; min-height: 34px;
         }}
         {extra_widgets}:focus {{ border-color: {BORDER_F}; }}
+        
         QComboBox QAbstractItemView {{
             background: {BG2}; color: {TEXT};
             selection-background-color: {BLUE}; selection-color: #fff;
             border: 1px solid {BORDER}; outline: none;
         }}
+        
+        /* Fixed: Force background transparency and strict alignment constraints */
         QComboBox::drop-down {{
-            border: none; width: 24px;
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 24px;
+            border: none;
+            background: transparent;
         }}
+        
+        /* Fixed: Anchored the CSS triangle arrow precisely inside the container */
         QComboBox::down-arrow {{
-            image: none; border-left: 4px solid transparent;
+            image: none; 
+            border-left: 4px solid transparent;
             border-right: 4px solid transparent;
             border-top: 5px solid {TEXT_SUB};
+            width: 0;
+            height: 0;
+            subcontrol-position: center;
         }}
     """
-
 
 def btn_primary_ss() -> str:
     return f"""

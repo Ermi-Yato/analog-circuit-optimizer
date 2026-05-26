@@ -61,13 +61,15 @@ class DatasetView(QWidget):
 
         # Circuit selector
         circ_label = QLabel("Circuit")
-        circ_label.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px;")
+        circ_label.setStyleSheet(f"color: {TEXT_SUB}; font-size: 14px;")
+        circ_label.setFont(QFont("Helvetica"))
         self._combo_circuit = QComboBox()
         self._combo_circuit.setMinimumWidth(220)
         self._combo_circuit.setStyleSheet(_input_ss())
 
         # Sample count
         n_label = QLabel("Samples")
+        n_label.setFont(QFont("Helvetica"))
         n_label.setStyleSheet(f"color: {TEXT_SUB}; font-size: 12px;")
         self._spin_n = QSpinBox()
         self._spin_n.setRange(10, 50000)

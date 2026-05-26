@@ -67,12 +67,12 @@
   "model": {
     "surrogate_path": "trained_models/transimpedance_amplifier/circuit_model.pkl",
     "scaler_path": "trained_models/transimpedance_amplifier/feature_scaler.pkl",
-    "trained_on": "2026-05-22",
-    "samples": 386,
+    "trained_on": "2026-05-26",
+    "samples": 12,
     "r2_scores": {
-      "Transimpedance_dBOhm": 0.999067660503647,
-      "Bandwidth_Hz": 0.9808108939583131,
-      "Phase_Margin_deg": 0.9726889411144928
+      "Transimpedance_dBOhm": 0.7883985161113682,
+      "Bandwidth_Hz": 0.7183289059464087,
+      "Phase_Margin_deg": 0.2844359726693677
     },
     "model_type": "random_forest",
     "log_metrics": []
